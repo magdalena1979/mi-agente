@@ -21,7 +21,7 @@ export const entryStatusOptions: EntryStatus[] = [
   'archived',
 ]
 
-export const entrySourceOptions: EntrySourceType[] = ['screenshot', 'manual']
+export const entrySourceOptions: EntrySourceType[] = ['screenshot', 'manual', 'link']
 
 const metadataShape = ENTRY_FIELD_KEYS.reduce<
   Record<EntryFieldKey, z.ZodString>
@@ -34,8 +34,9 @@ export const entryFormSchema = z.object({
   type: z.enum(ENTRY_TYPES),
   title: z.string().trim().min(1, 'El titulo es obligatorio.'),
   summary: z.string().trim(),
-  sourceType: z.enum(['screenshot', 'manual']),
+  sourceType: z.enum(['screenshot', 'manual', 'link']),
   sourceName: z.string().trim(),
+  sourceUrl: z.string().trim(),
   status: z.enum(['draft', 'reviewed', 'archived']),
   tagsText: z.string(),
   extractedText: z.string(),
@@ -63,6 +64,7 @@ export function createEmptyEntryFormValues(
     summary: '',
     sourceType: 'screenshot',
     sourceName: '',
+    sourceUrl: '',
     status: 'draft',
     tagsText: '',
     extractedText: '',
@@ -90,6 +92,7 @@ export function getEntryFormDefaultValues(
     summary: entry.summary,
     sourceType: entry.sourceType,
     sourceName: entry.sourceName ?? '',
+    sourceUrl: entry.sourceUrl ?? '',
     status: entry.status,
     tagsText: entry.aiTags.join(', '),
     extractedText: entry.extractedText,
@@ -118,8 +121,8 @@ export function getEntryFormValuesFromAnalysis(
     type: analysis.detectedType,
     title: analysis.title,
     summary: analysis.summary,
+    sourceName: analysis.sourceName,
     sourceType: 'screenshot',
-    sourceName: '',
     status: 'draft',
     tagsText: analysis.tags.join(', '),
     extractedText,

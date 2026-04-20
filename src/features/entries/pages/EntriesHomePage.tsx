@@ -4,7 +4,13 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '@/features/auth/auth-context'
 import { entryTypeOptions } from '@/features/entries/config/entry-type-config'
 import { deleteEntry, listEntries } from '@/features/entries/entries-api'
-import type { EntryRecord, EntryType } from '@/types/entries'
+import { NotificationsBell } from '@/features/sharing/components/NotificationsBell'
+import { ShareEntriesModal } from '@/features/sharing/components/ShareEntriesModal'
+import {
+  listEntryUserMarks,
+  upsertEntryUserMark,
+} from '@/features/sharing/sharing-api'
+import type { EntryRecord, EntryType, EntryUserMarkRecord } from '@/types/entries'
 
 type EntryTypeFilter = 'all' | EntryType
 
@@ -30,6 +36,9 @@ function getEntrySearchText(entry: EntryRecord) {
     entry.summary,
     entry.type,
     entry.sourceName ?? '',
+    entry.sourceUrl ?? '',
+    entry.uploaderName ?? '',
+    entry.uploaderEmail ?? '',
     entry.sourceType,
     entry.aiTags.join(' '),
     entry.metadata.author ?? '',
@@ -45,6 +54,12 @@ function getEntrySearchText(entry: EntryRecord) {
 }
 
 function getRowMeta(entry: EntryRecord) {
+  if (entry.sourceType === 'link' && entry.sourceUrl) {
+    return entry.sourceName
+      ? `${entry.sourceName} - ${entry.sourceUrl}`
+      : entry.sourceUrl
+  }
+
   if (entry.type === 'movie' || entry.type === 'series') {
     return [entry.metadata.platform, entry.metadata.genre]
       .filter(Boolean)
@@ -82,15 +97,26 @@ function getRowMeta(entry: EntryRecord) {
   return entry.sourceName ?? entry.sourceType
 }
 
+function getUploaderLabel(entry: EntryRecord, currentUserId?: string) {
+  if (entry.userId === currentUserId) {
+    return 'Vos'
+  }
+
+  return entry.uploaderName ?? entry.uploaderEmail ?? entry.userId
+}
+
 export function EntriesHomePage() {
   const { user } = useAuth()
   const [entries, setEntries] = useState<EntryRecord[]>([])
+  const [entryMarksById, setEntryMarksById] = useState<Record<string, EntryUserMarkRecord>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [markingId, setMarkingId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [activeType, setActiveType] = useState<EntryTypeFilter>('all')
   const [currentPage, setCurrentPage] = useState(1)
+  const [isShareOpen, setIsShareOpen] = useState(false)
 
   useEffect(() => {
     let ignore = false
@@ -102,7 +128,7 @@ export function EntriesHomePage() {
       setErrorMessage(null)
 
       try {
-        const nextEntries = await listEntries(user.id)
+        const nextEntries = await listEntries()
 
         if (!ignore) {
           setEntries(nextEntries)
@@ -128,6 +154,49 @@ export function EntriesHomePage() {
       ignore = true
     }
   }, [user])
+
+  useEffect(() => {
+    let ignore = false
+
+    async function loadMarks() {
+      if (!user || entries.length === 0) {
+        if (!ignore) {
+          setEntryMarksById({})
+        }
+        return
+      }
+
+      try {
+        const marks = await listEntryUserMarks(
+          user.id,
+          entries.map((entry) => entry.id),
+        )
+
+        if (!ignore) {
+          setEntryMarksById(
+            marks.reduce<Record<string, EntryUserMarkRecord>>((accumulator, mark) => {
+              accumulator[mark.entryId] = mark
+              return accumulator
+            }, {}),
+          )
+        }
+      } catch (error) {
+        if (!ignore) {
+          setErrorMessage(
+            error instanceof Error
+              ? error.message
+              : 'No pudimos cargar tus marcas personales.',
+          )
+        }
+      }
+    }
+
+    void loadMarks()
+
+    return () => {
+      ignore = true
+    }
+  }, [entries, user])
 
   const filteredEntries = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase()
@@ -163,7 +232,7 @@ export function EntriesHomePage() {
     setErrorMessage(null)
 
     try {
-      await deleteEntry(entry.id, user.id)
+      await deleteEntry(entry.id)
       setEntries((currentEntries) =>
         currentEntries.filter((currentEntry) => currentEntry.id !== entry.id),
       )
@@ -178,17 +247,60 @@ export function EntriesHomePage() {
     }
   }
 
+  async function handleToggleMark(entry: EntryRecord) {
+    if (!user) return
+
+    const currentMark = entryMarksById[entry.id]
+    const nextChecked = !currentMark?.isChecked
+
+    setMarkingId(entry.id)
+
+    try {
+      const nextMark = await upsertEntryUserMark({
+        entryId: entry.id,
+        userId: user.id,
+        isChecked: nextChecked,
+      })
+
+      setEntryMarksById((currentMarks) => ({
+        ...currentMarks,
+        [entry.id]: nextMark,
+      }))
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : 'No pudimos actualizar tu marca personal.',
+      )
+    } finally {
+      setMarkingId(null)
+    }
+  }
+
   return (
     <section className="page page--library">
       <header className="library-header">
-        <div className="section-title">
-          <h1>The things you share with .</h1>
-          <p>Agrega una captura</p>
-        </div>
+        <div />
 
-        <Link className="button library-header__cta" to="/entries/new">
-          Agregar algo
-        </Link>
+        <div className="library-header__actions">
+          <NotificationsBell />
+
+          {user ? (
+            <button
+              type="button"
+              className="button--ghost"
+              onClick={() => {
+                setIsShareOpen(true)
+              }}
+            >
+              Share with
+            </button>
+          ) : null}
+
+          <Link className="button library-header__cta" to="/entries/new">
+            Agregar algo
+          </Link>
+        </div>
       </header>
 
       <section className="library-toolbar">
@@ -269,12 +381,16 @@ export function EntriesHomePage() {
           <div className="library-table__head" aria-hidden="true">
             <span>Item</span>
             <span>Tipo</span>
+            <span>Subio</span>
             <span>Actualizado</span>
+            <span>Marca</span>
           </div>
 
           <div className="library-table__body">
             {paginatedEntries.map((entry) => {
               const rowMeta = getRowMeta(entry)
+              const uploaderLabel = getUploaderLabel(entry, user?.id)
+              const isChecked = entryMarksById[entry.id]?.isChecked ?? false
 
               return (
                 <article className="library-row" key={entry.id}>
@@ -288,22 +404,40 @@ export function EntriesHomePage() {
                       {typeLabelMap[entry.type]}
                     </span>
 
+                    <div className="library-row__uploader">
+                      <span>{uploaderLabel}</span>
+                    </div>
+
                     <div className="library-row__side">
                       <span>{formatDate(entry.updatedAt)}</span>
                       {rowMeta ? <small>{rowMeta}</small> : null}
                     </div>
                   </Link>
 
-                  <button
-                    type="button"
-                    className="button--subtle-danger"
-                    disabled={deletingId === entry.id}
-                    onClick={() => {
-                      void handleDelete(entry)
-                    }}
-                  >
-                    {deletingId === entry.id ? 'Borrando...' : 'Borrar'}
-                  </button>
+                  <div className="library-row__actions">
+                    <label className="entry-mark-toggle">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        disabled={markingId === entry.id}
+                        onChange={() => {
+                          void handleToggleMark(entry)
+                        }}
+                      />
+                      <span>{isChecked ? 'Ya lo vi' : 'Marcar'}</span>
+                    </label>
+
+                    <button
+                      type="button"
+                      className="button--subtle-danger"
+                      disabled={deletingId === entry.id}
+                      onClick={() => {
+                        void handleDelete(entry)
+                      }}
+                    >
+                      {deletingId === entry.id ? 'Borrando...' : 'Borrar'}
+                    </button>
+                  </div>
                 </article>
               )
             })}
@@ -340,6 +474,16 @@ export function EntriesHomePage() {
           ) : null}
         </section>
       )}
+
+      {user ? (
+        <ShareEntriesModal
+          isOpen={isShareOpen}
+          currentUserId={user.id}
+          onClose={() => {
+            setIsShareOpen(false)
+          }}
+        />
+      ) : null}
     </section>
   )
 }

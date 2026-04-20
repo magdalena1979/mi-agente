@@ -41,6 +41,7 @@ export function NewEntryPage() {
   const { user } = useAuth()
   const inputRef = useRef<HTMLInputElement | null>(null)
   const previewUrlsRef = useRef<string[]>([])
+  const [linkInput, setLinkInput] = useState('')
 
   const [pendingImages, setPendingImages] = useState<PendingUploadImage[]>([])
   const [draftEntryId, setDraftEntryId] = useState<string | null>(null)
@@ -86,6 +87,31 @@ export function NewEntryPage() {
     setFormDefaults(
       createEmptyEntryFormValues({
         sourceType: 'screenshot',
+      }),
+    )
+  }
+
+  function handleUseLink() {
+    const normalizedLink = linkInput.trim()
+
+    if (!normalizedLink) {
+      setAnalysisErrorMessage('Pega un link valido para continuar.')
+      return
+    }
+
+    setPendingImages([])
+    setCombinedExtractedText('')
+    setAnalysisDetectedType(null)
+    setAnalysisConfidence(null)
+    setAnalysisTags([])
+    setAnalysisErrorMessage(null)
+    setSaveErrorMessage(null)
+    setSaveSuccessMessage(null)
+    setHasAnalyzed(true)
+    setFormDefaults(
+      createEmptyEntryFormValues({
+        sourceType: 'link',
+        sourceUrl: normalizedLink,
       }),
     )
   }
@@ -278,12 +304,14 @@ export function NewEntryPage() {
       return
     }
 
-    if (pendingImages.length === 0) {
+    const requiresImages = values.sourceType !== 'link'
+
+    if (requiresImages && pendingImages.length === 0) {
       setSaveErrorMessage('Subi al menos una captura antes de guardar.')
       return
     }
 
-    if (!hasAnalyzed) {
+    if (requiresImages && !hasAnalyzed) {
       setSaveErrorMessage('Analiza las capturas antes de guardar la entry.')
       return
     }
@@ -300,10 +328,18 @@ export function NewEntryPage() {
         summary: values.summary.trim(),
         sourceType: values.sourceType,
         sourceName: values.sourceName.trim() || null,
+        sourceUrl: values.sourceUrl.trim() || null,
         status: values.status,
         aiTags: parseTags(values.tagsText),
         extractedText: values.extractedText.trim(),
         metadata: getEntryMetadataFromForm(values),
+        uploaderName:
+          typeof user.user_metadata?.full_name === 'string'
+            ? user.user_metadata.full_name
+            : typeof user.user_metadata?.name === 'string'
+              ? user.user_metadata.name
+              : null,
+        uploaderEmail: user.email ?? null,
       }
 
       const entry = draftEntryId
@@ -314,7 +350,9 @@ export function NewEntryPage() {
         setDraftEntryId(entry.id)
       }
 
-      await replaceEntryImages(entry.id, user.id, pendingImages)
+      if (pendingImages.length > 0) {
+        await replaceEntryImages(entry.id, user.id, pendingImages)
+      }
       setSaveSuccessMessage('Entry guardada correctamente.')
       navigate(`/entries/${entry.id}`, { replace: true })
     } catch (error) {
@@ -330,9 +368,9 @@ export function NewEntryPage() {
   }
 
   const submitDisabledReason =
-    pendingImages.length === 0
+    formDefaults.sourceType !== 'link' && pendingImages.length === 0
       ? 'Subi al menos una captura para continuar.'
-      : !hasAnalyzed
+      : formDefaults.sourceType !== 'link' && !hasAnalyzed
         ? 'Analiza las capturas antes de guardar la entry.'
         : null
 
@@ -351,7 +389,7 @@ export function NewEntryPage() {
           <div className="section-title">
             <h2>1. Subi capturas</h2>
             <p>
-              Pueden ser recetas, peliculas, series, libros, articulos, lugares, viajes, plantas, huerta o listas.
+              Pueden ser capturas o links de recetas, peliculas, series, libros, articulos, lugares, viajes, plantas, huerta o listas.
             </p>
           </div>
 
@@ -382,6 +420,27 @@ export function NewEntryPage() {
               }}
             >
               {isAnalyzing ? 'Analizando...' : 'Analizar con IA'}
+            </button>
+          </div>
+
+          <label className="form-field">
+            <span>O pega un link</span>
+            <input
+              type="url"
+              placeholder="https://..."
+              value={linkInput}
+              onChange={(event) => {
+                setLinkInput(event.target.value)
+              }}
+            />
+          </label>
+          <div className="entry-form__actions">
+            <button
+              type="button"
+              className="button--ghost"
+              onClick={handleUseLink}
+            >
+              Usar link
             </button>
           </div>
 

@@ -21,7 +21,7 @@ export function AppShell() {
           <div className="app-header__top">
             <div className="brand">
               <div className="brand__copy">
-                <h1 className="brand__title">The Things We Share</h1>
+                <h1 className="brand__title">The Things We STILL Share</h1>
               </div>
             </div>
 

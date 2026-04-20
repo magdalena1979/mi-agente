@@ -7,6 +7,8 @@ import { AuthPage } from '@/features/auth/pages/AuthPage'
 import { EntriesHomePage } from '@/features/entries/pages/EntriesHomePage'
 import { EntryDetailPage } from '@/features/entries/pages/EntryDetailPage'
 import { NewEntryPage } from '@/features/entries/pages/NewEntryPage'
+import { AcceptInvitationPage } from '@/features/lists/pages/AcceptInvitationPage'
+import { ListDetailPage } from '@/features/lists/pages/ListDetailPage'
 
 export const router = createBrowserRouter([
   {
@@ -42,6 +44,22 @@ export const router = createBrowserRouter([
         element: (
           <RequireAuth>
             <EntryDetailPage />
+          </RequireAuth>
+        ),
+      },
+      {
+        path: 'lists/:listId',
+        element: (
+          <RequireAuth>
+            <ListDetailPage />
+          </RequireAuth>
+        ),
+      },
+      {
+        path: 'accept-invite',
+        element: (
+          <RequireAuth>
+            <AcceptInvitationPage />
           </RequireAuth>
         ),
       },

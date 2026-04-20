@@ -34,7 +34,7 @@ export const ENTRY_FIELD_KEYS = [
 export type EntryFieldKey = (typeof ENTRY_FIELD_KEYS)[number]
 
 export type EntryStatus = 'draft' | 'reviewed' | 'archived'
-export type EntrySourceType = 'screenshot' | 'manual'
+export type EntrySourceType = 'screenshot' | 'manual' | 'link'
 export type PendingUploadOcrStatus = 'idle' | 'processing' | 'success' | 'error'
 
 export type EntryMetadataFields = Partial<Record<EntryFieldKey, string>>
@@ -47,10 +47,13 @@ export type EntryRecord = {
   summary: string
   sourceType: EntrySourceType
   sourceName: string | null
+  sourceUrl: string | null
   status: EntryStatus
   aiTags: string[]
   extractedText: string
   metadata: EntryMetadataFields
+  uploaderName: string | null
+  uploaderEmail: string | null
   createdAt: string
   updatedAt: string
 }
@@ -79,7 +82,27 @@ export type AiAnalysisResult = {
   detectedType: EntryType
   title: string
   summary: string
+  sourceName: string
   tags: string[]
   fields: EntryMetadataFields
   confidence: number
+}
+
+export type EntryUserMarkRecord = {
+  entryId: string
+  userId: string
+  isChecked: boolean
+  updatedAt: string
+}
+
+export type EntryNotificationRecord = {
+  id: string
+  recipientUserId: string
+  actorUserId: string | null
+  actorLabel: string | null
+  entryId: string | null
+  entryTitle: string | null
+  type: 'new_shared_entry'
+  createdAt: string
+  readAt: string | null
 }

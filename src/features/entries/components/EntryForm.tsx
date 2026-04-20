@@ -49,8 +49,13 @@ export function EntryForm({
     control: form.control,
     name: 'type',
   })
+  const selectedSourceType = useWatch({
+    control: form.control,
+    name: 'sourceType',
+  })
   const visibleFields = getVisibleEntryFieldDefinitions(selectedType)
   const isSubmitDisabled = !canSubmit || isSubmitting || isDeleting
+  const isLinkSource = selectedSourceType === 'link'
 
   useEffect(() => {
     form.reset(defaultValues)
@@ -122,11 +127,22 @@ export function EntryForm({
           <span>Nombre de la fuente</span>
           <input
             type="text"
-            placeholder="Ej. Instagram, WhatsApp, flyer, captura"
+            placeholder="Ej. Instagram, WhatsApp, newsletter, articulo"
             {...form.register('sourceName')}
           />
         </label>
       </div>
+
+      {isLinkSource ? (
+        <label className="form-field">
+          <span>Link</span>
+          <input
+            type="url"
+            placeholder="https://..."
+            {...form.register('sourceUrl')}
+          />
+        </label>
+      ) : null}
 
       <label className="form-field">
         <span>Tags</span>

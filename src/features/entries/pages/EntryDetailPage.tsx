@@ -60,6 +60,22 @@ function getDetailFacts(entry: EntryRecord) {
       label: 'Origen',
       value: entry.sourceName || entry.sourceType,
     },
+    ...(entry.sourceUrl
+      ? [
+          {
+            label: 'Link',
+            value: entry.sourceUrl,
+          },
+        ]
+      : []),
+    ...(entry.uploaderName || entry.uploaderEmail
+      ? [
+          {
+            label: 'Subido por',
+            value: entry.uploaderName || entry.uploaderEmail || '',
+          },
+        ]
+      : []),
     {
       label: 'Estado',
       value: entry.status,
@@ -92,7 +108,7 @@ export function EntryDetailPage() {
 
       try {
         const [nextEntry, nextEntryImages] = await Promise.all([
-          getEntry(entryId, user.id),
+          getEntry(entryId),
           listEntryImages(entryId),
         ])
 
@@ -137,7 +153,9 @@ export function EntryDetailPage() {
   )
 
   async function handleUpdate(values: EntryFormValues) {
-    if (!user || !entryId) return
+    if (!user || !entryId || !entry) return
+
+    const currentEntry = entry
 
     setIsSubmitting(true)
     setErrorMessage(null)
@@ -151,10 +169,13 @@ export function EntryDetailPage() {
         summary: values.summary.trim(),
         sourceType: values.sourceType,
         sourceName: values.sourceName.trim() || null,
+        sourceUrl: values.sourceUrl.trim() || null,
         status: values.status,
         aiTags: parseTags(values.tagsText),
         extractedText: values.extractedText.trim(),
         metadata: getEntryMetadataFromForm(values),
+        uploaderName: currentEntry.uploaderName,
+        uploaderEmail: currentEntry.uploaderEmail,
       })
 
       setEntry(updatedEntry)
@@ -183,7 +204,7 @@ export function EntryDetailPage() {
     setErrorMessage(null)
 
     try {
-      await deleteEntry(entry.id, user.id)
+      await deleteEntry(entry.id)
       navigate('/', { replace: true })
     } catch (error) {
       setErrorMessage(

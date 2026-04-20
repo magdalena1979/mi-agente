@@ -72,7 +72,7 @@ export default defineConfig(({ mode }) => {
         },
         includeAssets: ['favicon.svg'],
         manifest: {
-          name: 'The Things We Share',
+          name: 'The Things We STILL Share',
           short_name: 'Things',
           description:
             'PWA para guardar cosas que te interesan desde capturas, con OCR, IA y revision manual.',

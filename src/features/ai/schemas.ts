@@ -41,6 +41,7 @@ export const aiAnalysisSchema = z
     detectedType: z.enum(ENTRY_TYPES).default('other'),
     title: z.string().default(''),
     summary: z.string().default(''),
+    sourceName: z.string().default(''),
     tags: z.array(z.string()).default([]),
     fields: aiFieldSchema.default(emptyAiFields),
     confidence: z.number().min(0).max(1).default(0),

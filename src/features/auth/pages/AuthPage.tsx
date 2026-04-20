@@ -24,6 +24,8 @@ type AuthMode = (typeof authModes)[keyof typeof authModes]
 type NavigationState = {
   from?: {
     pathname?: string
+    search?: string
+    hash?: string
   }
 }
 
@@ -36,8 +38,10 @@ export function AuthPage() {
   const [feedback, setFeedback] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  const redirectTo =
-    (location.state as NavigationState | null)?.from?.pathname ?? '/'
+  const redirectState = (location.state as NavigationState | null)?.from
+  const redirectTo = redirectState
+    ? `${redirectState.pathname ?? '/'}${redirectState.search ?? ''}${redirectState.hash ?? ''}`
+    : '/'
 
   const form = useForm<AuthFormValues>({
     resolver: zodResolver(baseSchema),
@@ -79,7 +83,7 @@ export function AuthPage() {
             'Te enviamos un email de confirmacion. Cuando actives la cuenta, ya podras entrar.',
           )
         } else {
-          navigate('/', { replace: true })
+          navigate(redirectTo, { replace: true })
         }
       }
     } catch (error) {
@@ -96,7 +100,7 @@ export function AuthPage() {
   return (
     <section className="page">
       <div className="section-title">
-        <h1>The Things We Share</h1>
+        <h1>The Things We STILL Share</h1>
         <p>
           Tu archivo personal de capturas, recomendaciones, recetas, peliculas, libros y cosas para volver a mirar.
         </p>
