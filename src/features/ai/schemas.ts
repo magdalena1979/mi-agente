@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ENTRY_TYPES } from '@/types/entries'
+import { ENTRY_TYPES } from '../../types/entries'
 
 const emptyAiFields = {
   author: '',
@@ -8,6 +8,7 @@ const emptyAiFields = {
   time: '',
   location: '',
   director: '',
+  cast: '',
   genre: '',
   year: '',
   duration: '',
@@ -24,6 +25,7 @@ const aiFieldSchema = z
     time: z.string().default(''),
     location: z.string().default(''),
     director: z.string().default(''),
+    cast: z.string().default(''),
     genre: z.string().default(''),
     year: z.string().default(''),
     duration: z.string().default(''),
@@ -45,9 +47,41 @@ export const aiAnalysisSchema = z
   })
   .strict()
 
+export const aiAnalysisImageSchema = z
+  .object({
+    name: z.string().min(1),
+    type: z.string().min(1),
+    position: z.number().int().min(0),
+    dataUrl: z.string().startsWith('data:image/'),
+  })
+  .strict()
+
+export const ocrTextByImageSchema = z
+  .object({
+    name: z.string().min(1),
+    position: z.number().int().min(0),
+    text: z.string(),
+    status: z.enum(['success', 'error']),
+    errorMessage: z.string().default(''),
+  })
+  .strict()
+
+export const analyzeEntryRequestSchema = z
+  .object({
+    combinedExtractedText: z.string(),
+    images: z.array(aiAnalysisImageSchema).min(1),
+    ocrTextByImage: z.array(ocrTextByImageSchema).min(1),
+  })
+  .strict()
+
 export type AiAnalysisInput = z.input<typeof aiAnalysisSchema>
 export type AiAnalysis = z.infer<typeof aiAnalysisSchema>
+export type AnalyzeEntryRequest = z.infer<typeof analyzeEntryRequestSchema>
 
 export function normalizeAiAnalysis(payload: unknown) {
   return aiAnalysisSchema.parse(payload)
+}
+
+export function normalizeAnalyzeEntryRequest(payload: unknown) {
+  return analyzeEntryRequestSchema.parse(payload)
 }

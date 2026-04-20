@@ -4,6 +4,11 @@ export const ENTRY_TYPES = [
   'recipe',
   'movie',
   'series',
+  'article',
+  'place',
+  'trip',
+  'plant',
+  'garden',
   'collection',
   'other',
 ] as const
@@ -16,6 +21,7 @@ export const ENTRY_FIELD_KEYS = [
   'time',
   'location',
   'director',
+  'cast',
   'genre',
   'year',
   'duration',
@@ -29,6 +35,7 @@ export type EntryFieldKey = (typeof ENTRY_FIELD_KEYS)[number]
 
 export type EntryStatus = 'draft' | 'reviewed' | 'archived'
 export type EntrySourceType = 'screenshot' | 'manual'
+export type PendingUploadOcrStatus = 'idle' | 'processing' | 'success' | 'error'
 
 export type EntryMetadataFields = Partial<Record<EntryFieldKey, string>>
 
@@ -56,6 +63,16 @@ export type EntryImageRecord = {
   position: number
   ocrText: string
   createdAt: string
+}
+
+export type PendingUploadImage = {
+  id: string
+  file: File
+  previewUrl: string
+  position: number
+  ocrText: string
+  ocrStatus: PendingUploadOcrStatus
+  ocrErrorMessage: string | null
 }
 
 export type AiAnalysisResult = {

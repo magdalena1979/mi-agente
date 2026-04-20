@@ -1,6 +1,8 @@
 import { createBrowserRouter } from 'react-router-dom'
 
 import { AppShell } from '@/components/layout/AppShell'
+import { PublicOnlyRoute } from '@/features/auth/PublicOnlyRoute'
+import { RequireAuth } from '@/features/auth/RequireAuth'
 import { AuthPage } from '@/features/auth/pages/AuthPage'
 import { EntriesHomePage } from '@/features/entries/pages/EntriesHomePage'
 import { EntryDetailPage } from '@/features/entries/pages/EntryDetailPage'
@@ -13,19 +15,35 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <EntriesHomePage />,
+        element: (
+          <RequireAuth>
+            <EntriesHomePage />
+          </RequireAuth>
+        ),
       },
       {
         path: 'auth',
-        element: <AuthPage />,
+        element: (
+          <PublicOnlyRoute>
+            <AuthPage />
+          </PublicOnlyRoute>
+        ),
       },
       {
         path: 'entries/new',
-        element: <NewEntryPage />,
+        element: (
+          <RequireAuth>
+            <NewEntryPage />
+          </RequireAuth>
+        ),
       },
       {
         path: 'entries/:entryId',
-        element: <EntryDetailPage />,
+        element: (
+          <RequireAuth>
+            <EntryDetailPage />
+          </RequireAuth>
+        ),
       },
     ],
   },
