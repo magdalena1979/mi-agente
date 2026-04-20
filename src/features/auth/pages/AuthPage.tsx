@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { useAuth } from '@/features/auth/auth-context'
 import { env } from '@/lib/env'
@@ -32,8 +32,13 @@ type NavigationState = {
 export function AuthPage() {
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams] = useSearchParams()
   const { signIn, signUp, isConfigured } = useAuth()
-  const [mode, setMode] = useState<AuthMode>(authModes.signIn)
+  const requestedMode = searchParams.get('mode')
+  const invitedEmail = searchParams.get('email')?.trim().toLowerCase() ?? ''
+  const [mode, setMode] = useState<AuthMode>(
+    requestedMode === authModes.signUp ? authModes.signUp : authModes.signIn,
+  )
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -46,11 +51,29 @@ export function AuthPage() {
   const form = useForm<AuthFormValues>({
     resolver: zodResolver(baseSchema),
     defaultValues: {
-      email: '',
+      email: invitedEmail,
       password: '',
       confirmPassword: '',
     },
   })
+
+  useEffect(() => {
+    if (requestedMode === authModes.signIn || requestedMode === authModes.signUp) {
+      setMode(requestedMode)
+    }
+  }, [requestedMode])
+
+  useEffect(() => {
+    if (!invitedEmail) {
+      return
+    }
+
+    form.setValue('email', invitedEmail, {
+      shouldDirty: false,
+      shouldTouch: false,
+      shouldValidate: false,
+    })
+  }, [form, invitedEmail])
 
   async function onSubmit(values: AuthFormValues) {
     setErrorMessage(null)
@@ -102,7 +125,9 @@ export function AuthPage() {
       <div className="section-title">
         <h1>The Things We STILL Share</h1>
         <p>
-          Tu archivo personal de capturas, recomendaciones, recetas, peliculas, libros y cosas para volver a mirar.
+          {invitedEmail
+            ? `Crea tu cuenta o inicia sesion con ${invitedEmail} para aceptar la invitacion.`
+            : 'Tu archivo personal de capturas, recomendaciones, recetas, peliculas, libros y cosas para volver a mirar.'}
         </p>
       </div>
 

@@ -46,6 +46,25 @@ export function AcceptInvitationPage() {
 
   const token = searchParams.get('token') ?? ''
 
+  function openAuth(mode: 'signIn' | 'signUp') {
+    const nextSearchParams = new URLSearchParams({
+      mode,
+    })
+
+    if (invitation?.email) {
+      nextSearchParams.set('email', invitation.email)
+    }
+
+    navigate(`/auth?${nextSearchParams.toString()}`, {
+      state: {
+        from: {
+          pathname: '/accept-invite',
+          search: token ? `?token=${token}` : '',
+        },
+      },
+    })
+  }
+
   useEffect(() => {
     let ignore = false
 
@@ -155,18 +174,48 @@ export function AcceptInvitationPage() {
           </div>
         ) : null}
 
+        {!isLoading && invitation && !user ? (
+          <p className="feedback feedback--success">
+            Para aceptar esta invitacion primero crea tu cuenta o inicia sesion con
+            contrasena. Despues volveras automaticamente a este link.
+          </p>
+        ) : null}
+
         <div className="entry-form__actions">
-          {invitation?.status === 'pending' ? (
+          {invitation?.status === 'pending' && user ? (
             <button
               type="button"
               className="button"
-              disabled={isSubmitting || !user}
+              disabled={isSubmitting}
               onClick={() => {
                 void handleAccept()
               }}
             >
-              {isSubmitting ? 'Aceptando...' : 'Accept invitation'}
+              {isSubmitting ? 'Aceptando...' : 'Aceptar invitacion'}
             </button>
+          ) : null}
+
+          {invitation?.status === 'pending' && !user ? (
+            <>
+              <button
+                type="button"
+                className="button"
+                onClick={() => {
+                  openAuth('signUp')
+                }}
+              >
+                Crear cuenta
+              </button>
+              <button
+                type="button"
+                className="button--ghost"
+                onClick={() => {
+                  openAuth('signIn')
+                }}
+              >
+                Iniciar sesion
+              </button>
+            </>
           ) : null}
 
           <Link className="button--ghost" to="/">
