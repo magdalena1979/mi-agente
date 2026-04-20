@@ -94,13 +94,6 @@ export function AcceptInvitationPage() {
       return
     }
 
-    if (user.email.toLowerCase() !== invitation.email.toLowerCase()) {
-      setErrorMessage(
-        `Esta invitacion fue enviada a ${invitation.email}. Inicia sesion con ese email para aceptarla.`,
-      )
-      return
-    }
-
     setIsSubmitting(true)
     setErrorMessage(null)
     setSuccessMessage(null)
@@ -152,8 +145,12 @@ export function AcceptInvitationPage() {
               </strong>
             </div>
             <div className="detail-fact">
-              <span>Invitado</span>
+              <span>Invitacion para</span>
               <strong>{invitation.email}</strong>
+            </div>
+            <div className="detail-fact">
+              <span>Sesion actual</span>
+              <strong>{user?.email ?? 'Sin sesion'}</strong>
             </div>
           </div>
         ) : null}
