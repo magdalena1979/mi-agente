@@ -7,10 +7,12 @@ import { deleteEntry, listEntries } from '@/features/entries/entries-api'
 import { NotificationsBell } from '@/features/sharing/components/NotificationsBell'
 import { ShareEntriesModal } from '@/features/sharing/components/ShareEntriesModal'
 import {
+  listSentEntriesShareInvitations,
   listEntryUserMarks,
   upsertEntryUserMark,
 } from '@/features/sharing/sharing-api'
 import type { EntryRecord, EntryType, EntryUserMarkRecord } from '@/types/entries'
+import type { InvitationRecord } from '@/types/lists'
 
 type EntryTypeFilter = 'all' | EntryType
 
@@ -109,6 +111,7 @@ export function EntriesHomePage() {
   const { user } = useAuth()
   const [entries, setEntries] = useState<EntryRecord[]>([])
   const [entryMarksById, setEntryMarksById] = useState<Record<string, EntryUserMarkRecord>>({})
+  const [sharedInvitations, setSharedInvitations] = useState<InvitationRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -198,6 +201,41 @@ export function EntriesHomePage() {
     }
   }, [entries, user])
 
+  useEffect(() => {
+    let ignore = false
+
+    async function loadSharedPeople() {
+      if (!user) {
+        if (!ignore) {
+          setSharedInvitations([])
+        }
+        return
+      }
+
+      try {
+        const nextInvitations = await listSentEntriesShareInvitations(user.id)
+
+        if (!ignore) {
+          setSharedInvitations(nextInvitations)
+        }
+      } catch (error) {
+        if (!ignore) {
+          setErrorMessage(
+            error instanceof Error
+              ? error.message
+              : 'No pudimos cargar con quien estas compartiendo.',
+          )
+        }
+      }
+    }
+
+    void loadSharedPeople()
+
+    return () => {
+      ignore = true
+    }
+  }, [user])
+
   const filteredEntries = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase()
 
@@ -213,6 +251,12 @@ export function EntriesHomePage() {
 
   const totalPages = Math.max(1, Math.ceil(filteredEntries.length / PAGE_SIZE))
   const safeCurrentPage = Math.min(currentPage, totalPages)
+  const acceptedShares = sharedInvitations.filter(
+    (invitation) => invitation.status === 'accepted',
+  )
+  const pendingShares = sharedInvitations.filter(
+    (invitation) => invitation.status === 'pending',
+  )
 
   const paginatedEntries = useMemo(() => {
     const startIndex = (safeCurrentPage - 1) * PAGE_SIZE
@@ -353,6 +397,48 @@ export function EntriesHomePage() {
         </div>
       </section>
 
+      {user ? (
+        <section className="share-summary" aria-label="Personas con acceso compartido">
+          <div className="share-summary__header">
+            <h2>Compartiendo con</h2>
+            <span>
+              {acceptedShares.length} activas · {pendingShares.length} pendientes
+            </span>
+          </div>
+
+          {sharedInvitations.length === 0 ? (
+            <p className="share-summary__empty">
+              Todavia no compartiste tus entradas con nadie.
+            </p>
+          ) : (
+            <div className="share-summary__list">
+              {sharedInvitations.map((invitation) => (
+                <article className="share-person-card" key={invitation.id}>
+                  <div className="share-person-card__copy">
+                    <strong>{invitation.email}</strong>
+                    <span>
+                      {invitation.status === 'accepted'
+                        ? 'Acceso activo'
+                        : 'Invitacion pendiente'}
+                    </span>
+                  </div>
+
+                  <span
+                    className={
+                      invitation.status === 'accepted'
+                        ? 'share-person-card__status share-person-card__status--active'
+                        : 'share-person-card__status'
+                    }
+                  >
+                    {invitation.status === 'accepted' ? 'Activo' : 'Pendiente'}
+                  </span>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      ) : null}
+
       {errorMessage ? <p className="feedback feedback--error">{errorMessage}</p> : null}
 
       {isLoading ? (
@@ -479,6 +565,10 @@ export function EntriesHomePage() {
         <ShareEntriesModal
           isOpen={isShareOpen}
           currentUserId={user.id}
+          onSuccess={async () => {
+            const nextInvitations = await listSentEntriesShareInvitations(user.id)
+            setSharedInvitations(nextInvitations)
+          }}
           onClose={() => {
             setIsShareOpen(false)
           }}

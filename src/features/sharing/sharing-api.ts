@@ -3,6 +3,7 @@ import type {
   EntryNotificationRecord,
   EntryUserMarkRecord,
 } from '@/types/entries'
+import type { InvitationRecord } from '@/types/lists'
 
 type EntryUserMarkRow = {
   entry_id: string
@@ -21,6 +22,16 @@ type EntryNotificationRow = {
   type: 'new_shared_entry'
   created_at: string
   read_at: string | null
+}
+
+type InvitationRow = {
+  id: string
+  list_id: string | null
+  email: string
+  token: string
+  status: 'pending' | 'accepted'
+  invited_by: string | null
+  created_at: string
 }
 
 function getClient() {
@@ -70,6 +81,18 @@ function mapEntryNotificationRow(
     type: row.type,
     createdAt: row.created_at,
     readAt: row.read_at,
+  }
+}
+
+function mapInvitationRow(row: InvitationRow): InvitationRecord {
+  return {
+    id: row.id,
+    listId: row.list_id,
+    email: row.email,
+    token: row.token,
+    status: row.status,
+    invitedBy: row.invited_by,
+    createdAt: row.created_at,
   }
 }
 
@@ -145,6 +168,23 @@ export async function listUnreadEntryNotifications(userId: string) {
   }
 
   return ((data ?? []) as EntryNotificationRow[]).map(mapEntryNotificationRow)
+}
+
+export async function listSentEntriesShareInvitations(userId: string) {
+  const client = getClient()
+
+  const { data, error } = await client
+    .from('invitations')
+    .select('id,list_id,email,token,status,invited_by,created_at')
+    .is('list_id', null)
+    .eq('invited_by', userId)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    throw error
+  }
+
+  return ((data ?? []) as InvitationRow[]).map(mapInvitationRow)
 }
 
 export async function markEntryNotificationAsRead(notificationId: string) {
