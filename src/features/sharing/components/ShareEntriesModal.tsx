@@ -1,6 +1,9 @@
 import { useState } from 'react'
 
-import { createEntriesShareInvitation } from '@/features/lists/lists-api'
+import {
+  createEntriesShareInvitation,
+  sendShareInvitationEmail,
+} from '@/features/lists/lists-api'
 
 type ShareEntriesModalProps = {
   isOpen: boolean
@@ -70,7 +73,22 @@ export function ShareEntriesModal({
       })
 
       setInviteLink(nextInviteLink)
-      setSuccessMessage('Link generado. Compartelo manualmente.')
+
+      try {
+        await sendShareInvitationEmail({
+          email: normalizedEmail,
+          token,
+          shareScope: 'entries',
+          inviteLink: nextInviteLink,
+        })
+
+        setSuccessMessage('Invitacion enviada correctamente.')
+      } catch {
+        setSuccessMessage(
+          'La invitacion se guardo, pero el email no se envio automaticamente. Comparte el link manualmente.',
+        )
+      }
+
       setEmail('')
       await onSuccess?.()
     } catch (error) {
@@ -90,7 +108,7 @@ export function ShareEntriesModal({
       >
         <div className="section-title">
           <h2 id="share-entries-title">Share with</h2>
-          <p>Genera un link de invitacion para compartir tus entradas manualmente.</p>
+          <p>Invita a otra persona por email para compartir tus entradas.</p>
         </div>
 
         <form className="auth-form" onSubmit={handleSubmit}>
@@ -119,7 +137,7 @@ export function ShareEntriesModal({
 
           <div className="entry-form__actions">
             <button type="submit" className="button" disabled={isSubmitting}>
-              {isSubmitting ? 'Generando...' : 'Generar link'}
+              {isSubmitting ? 'Enviando...' : 'Enviar invitacion'}
             </button>
 
             {inviteLink ? (
