@@ -28,23 +28,9 @@ export function ShareEntriesModal({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
-  const [inviteLink, setInviteLink] = useState<string | null>(null)
 
   if (!isOpen) {
     return null
-  }
-
-  async function handleCopyLink() {
-    if (!inviteLink) {
-      return
-    }
-
-    try {
-      await navigator.clipboard.writeText(inviteLink)
-      setSuccessMessage('Link copiado. Ya puedes compartirlo manualmente.')
-    } catch {
-      setErrorMessage('No pudimos copiar el link automaticamente.')
-    }
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -60,7 +46,6 @@ export function ShareEntriesModal({
     setIsSubmitting(true)
     setErrorMessage(null)
     setSuccessMessage(null)
-    setInviteLink(null)
 
     const token = crypto.randomUUID()
     const nextInviteLink = `${window.location.origin}/accept-invite?token=${token}`
@@ -72,22 +57,14 @@ export function ShareEntriesModal({
         invitedBy: currentUserId,
       })
 
-      setInviteLink(nextInviteLink)
+      await sendShareInvitationEmail({
+        email: normalizedEmail,
+        token,
+        shareScope: 'entries',
+        inviteLink: nextInviteLink,
+      })
 
-      try {
-        await sendShareInvitationEmail({
-          email: normalizedEmail,
-          token,
-          shareScope: 'entries',
-          inviteLink: nextInviteLink,
-        })
-
-        setSuccessMessage('Invitacion enviada correctamente.')
-      } catch {
-        setSuccessMessage(
-          'La invitacion se guardo, pero el email no se envio automaticamente. Comparte el link manualmente.',
-        )
-      }
+      setSuccessMessage('Invitacion enviada correctamente.')
 
       setEmail('')
       await onSuccess?.()
@@ -128,29 +105,11 @@ export function ShareEntriesModal({
           {successMessage ? (
             <p className="feedback feedback--success">{successMessage}</p>
           ) : null}
-          {inviteLink ? (
-            <label className="form-field">
-              <span>Link de invitacion</span>
-              <input type="text" readOnly value={inviteLink} />
-            </label>
-          ) : null}
 
           <div className="entry-form__actions">
             <button type="submit" className="button" disabled={isSubmitting}>
               {isSubmitting ? 'Enviando...' : 'Enviar invitacion'}
             </button>
-
-            {inviteLink ? (
-              <button
-                type="button"
-                className="button--ghost"
-                onClick={() => {
-                  void handleCopyLink()
-                }}
-              >
-                Copiar link
-              </button>
-            ) : null}
 
             <button
               type="button"
@@ -159,7 +118,6 @@ export function ShareEntriesModal({
                 setEmail('')
                 setErrorMessage(null)
                 setSuccessMessage(null)
-                setInviteLink(null)
                 onClose()
               }}
             >

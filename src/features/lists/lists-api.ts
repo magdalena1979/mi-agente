@@ -333,8 +333,13 @@ export async function sendShareInvitationEmail(input: {
 }) {
   const client = getClient()
 
-  const { error } = await client.functions.invoke('send-share-invite', {
-    body: input,
+  const { error } = await client.functions.invoke('invite-user', {
+    body: {
+      email: input.email,
+      redirectTo:
+        input.inviteLink ??
+        `${window.location.origin}/accept-invite?token=${input.token}`,
+    },
   })
 
   if (error) {
