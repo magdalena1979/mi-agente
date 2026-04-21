@@ -1,13 +1,10 @@
 type ResizeOptions = {
   maxSide?: number
   quality?: number
+  maxBytes?: number
 }
 
-function getPreferredMimeType(file: File) {
-  if (file.type === 'image/png' || file.type === 'image/webp') {
-    return file.type
-  }
-
+function getPreferredMimeType() {
   return 'image/jpeg'
 }
 
@@ -52,23 +49,49 @@ export async function createAnalysisImageDataUrl(
   file: File,
   options: ResizeOptions = {},
 ) {
-  const { maxSide = 1400, quality = 0.82 } = options
+  const { maxSide = 1200, quality = 0.76, maxBytes = 1_200_000 } = options
   const image = await loadImageElement(file)
-  const dimensions = getScaledDimensions(image.width, image.height, maxSide)
   const canvas = document.createElement('canvas')
+  let currentMaxSide = maxSide
+  let currentQuality = quality
+  let dataUrl = ''
 
-  canvas.width = dimensions.width
-  canvas.height = dimensions.height
+  while (true) {
+    const dimensions = getScaledDimensions(
+      image.width,
+      image.height,
+      currentMaxSide,
+    )
 
-  const context = canvas.getContext('2d')
+    canvas.width = dimensions.width
+    canvas.height = dimensions.height
 
-  if (!context) {
-    throw new Error('No pudimos preparar la imagen para IA.')
+    const context = canvas.getContext('2d')
+
+    if (!context) {
+      throw new Error('No pudimos preparar la imagen para IA.')
+    }
+
+    context.clearRect(0, 0, dimensions.width, dimensions.height)
+    context.drawImage(image, 0, 0, dimensions.width, dimensions.height)
+    dataUrl = canvas.toDataURL(getPreferredMimeType(), currentQuality)
+
+    const estimatedBytes = Math.ceil((dataUrl.length * 3) / 4)
+
+    if (
+      estimatedBytes <= maxBytes ||
+      (currentMaxSide <= 720 && currentQuality <= 0.55)
+    ) {
+      return dataUrl
+    }
+
+    if (currentQuality > 0.6) {
+      currentQuality = Math.max(0.6, Number((currentQuality - 0.08).toFixed(2)))
+      continue
+    }
+
+    currentMaxSide = Math.max(720, Math.round(currentMaxSide * 0.82))
   }
-
-  context.drawImage(image, 0, 0, dimensions.width, dimensions.height)
-
-  return canvas.toDataURL(getPreferredMimeType(file), quality)
 }
 
 export function sanitizeStorageFileName(fileName: string) {

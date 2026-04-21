@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 import { analyzeEntry } from '@/features/ai/analyze-entry'
 import { useAuth } from '@/features/auth/auth-context'
@@ -36,10 +36,41 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback
 }
 
+function inferSourceNameFromLink(link: string) {
+  try {
+    const url = new URL(link)
+    const hostname = url.hostname.replace(/^www\./, '').toLowerCase()
+    const pathname = url.pathname.toLowerCase()
+
+    if (hostname.includes('instagram.com')) {
+      if (pathname.startsWith('/reel/')) return 'Instagram Reel'
+      if (pathname.startsWith('/stories/')) return 'Instagram Story'
+      if (pathname.startsWith('/p/')) return 'Instagram Post'
+      if (pathname.startsWith('/tv/')) return 'Instagram Video'
+
+      return 'Instagram'
+    }
+    if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) {
+      if (pathname.startsWith('/shorts/')) return 'YouTube Short'
+      return 'YouTube'
+    }
+    if (hostname.includes('tiktok.com')) return 'TikTok'
+    if (hostname.includes('x.com') || hostname.includes('twitter.com')) return 'X'
+    if (hostname.includes('netflix.com')) return 'Netflix'
+    if (hostname.includes('spotify.com')) return 'Spotify'
+    if (hostname.includes('pinterest.com')) return 'Pinterest'
+
+    return hostname
+  } catch {
+    return ''
+  }
+}
+
 export function NewEntryPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const formSectionRef = useRef<HTMLElement | null>(null)
   const previewUrlsRef = useRef<string[]>([])
   const [linkInput, setLinkInput] = useState('')
 
@@ -57,11 +88,13 @@ export function NewEntryPage() {
   const [analysisErrorMessage, setAnalysisErrorMessage] = useState<string | null>(
     null,
   )
+  const [pasteSuccessMessage, setPasteSuccessMessage] = useState<string | null>(null)
+  const [linkSuccessMessage, setLinkSuccessMessage] = useState<string | null>(null)
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null)
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [isPastingImage, setIsPastingImage] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [hasAnalyzed, setHasAnalyzed] = useState(false)
 
   useEffect(() => {
     previewUrlsRef.current = pendingImages.map((image) => image.previewUrl)
@@ -76,12 +109,13 @@ export function NewEntryPage() {
   }, [])
 
   function resetAnalysisState() {
-    setHasAnalyzed(false)
     setCombinedExtractedText('')
     setAnalysisDetectedType(null)
     setAnalysisConfidence(null)
     setAnalysisTags([])
     setAnalysisErrorMessage(null)
+    setPasteSuccessMessage(null)
+    setLinkSuccessMessage(null)
     setSaveErrorMessage(null)
     setSaveSuccessMessage(null)
     setFormDefaults(
@@ -96,6 +130,15 @@ export function NewEntryPage() {
 
     if (!normalizedLink) {
       setAnalysisErrorMessage('Pega un link valido para continuar.')
+      setLinkSuccessMessage(null)
+      return
+    }
+
+    try {
+      new URL(normalizedLink)
+    } catch {
+      setAnalysisErrorMessage('Pega un link valido para continuar.')
+      setLinkSuccessMessage(null)
       return
     }
 
@@ -105,22 +148,26 @@ export function NewEntryPage() {
     setAnalysisConfidence(null)
     setAnalysisTags([])
     setAnalysisErrorMessage(null)
+    setLinkSuccessMessage('Link listo. Completa los datos abajo y guarda la entrada.')
     setSaveErrorMessage(null)
     setSaveSuccessMessage(null)
-    setHasAnalyzed(true)
     setFormDefaults(
       createEmptyEntryFormValues({
         sourceType: 'link',
+        sourceName: inferSourceNameFromLink(normalizedLink),
         sourceUrl: normalizedLink,
       }),
     )
+
+    requestAnimationFrame(() => {
+      formSectionRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    })
   }
 
-  function handleFilesSelected(event: React.ChangeEvent<HTMLInputElement>) {
-    const selectedFiles = Array.from(event.target.files ?? []).filter((file) =>
-      file.type.startsWith('image/'),
-    )
-
+  function appendImageFiles(selectedFiles: File[]) {
     if (selectedFiles.length === 0) {
       return
     }
@@ -143,6 +190,75 @@ export function NewEntryPage() {
     })
 
     resetAnalysisState()
+  }
+
+  async function handlePasteImageFromClipboard() {
+    if (
+      typeof navigator === 'undefined' ||
+      !('clipboard' in navigator) ||
+      typeof navigator.clipboard.read !== 'function'
+    ) {
+      setAnalysisErrorMessage(
+        'Tu navegador no permite pegar imagenes con boton. Prueba con Ctrl+V.',
+      )
+      return
+    }
+
+    setIsPastingImage(true)
+    setAnalysisErrorMessage(null)
+
+    try {
+      const clipboardItems = await navigator.clipboard.read()
+      const imageFiles: File[] = []
+
+      for (const clipboardItem of clipboardItems) {
+        const imageType = clipboardItem.types.find((type) =>
+          type.startsWith('image/'),
+        )
+
+        if (!imageType) {
+          continue
+        }
+
+        const blob = await clipboardItem.getType(imageType)
+        imageFiles.push(
+          new File([blob], `clipboard-${Date.now()}.${imageType.split('/')[1] || 'png'}`, {
+            type: imageType,
+          }),
+        )
+      }
+
+      if (imageFiles.length === 0) {
+        setAnalysisErrorMessage(
+          'No encontramos una imagen en el portapapeles. Copia una imagen y vuelve a intentar.',
+        )
+        return
+      }
+
+      appendImageFiles(imageFiles)
+      setPasteSuccessMessage(
+        imageFiles.length === 1
+          ? 'Imagen pegada. Ahora puedes analizarla.'
+          : `${imageFiles.length} imagenes pegadas. Ahora puedes analizarlas.`,
+      )
+    } catch (error) {
+      setAnalysisErrorMessage(
+        getErrorMessage(
+          error,
+          'No pudimos leer una imagen del portapapeles. Prueba con Ctrl+V.',
+        ),
+      )
+    } finally {
+      setIsPastingImage(false)
+    }
+  }
+
+  function handleFilesSelected(event: React.ChangeEvent<HTMLInputElement>) {
+    const selectedFiles = Array.from(event.target.files ?? []).filter((file) =>
+      file.type.startsWith('image/'),
+    )
+
+    appendImageFiles(selectedFiles)
 
     if (event.target) {
       event.target.value = ''
@@ -175,7 +291,6 @@ export function NewEntryPage() {
     setAnalysisErrorMessage(null)
     setSaveErrorMessage(null)
     setSaveSuccessMessage(null)
-    setHasAnalyzed(false)
     setAnalysisDetectedType(null)
     setAnalysisConfidence(null)
     setAnalysisTags([])
@@ -285,7 +400,6 @@ export function NewEntryPage() {
       setAnalysisDetectedType(analysis.detectedType)
       setAnalysisConfidence(analysis.confidence)
       setAnalysisTags(analysis.tags)
-      setHasAnalyzed(true)
     } catch (error) {
       setAnalysisErrorMessage(
         getErrorMessage(
@@ -293,7 +407,6 @@ export function NewEntryPage() {
           'No pudimos analizar las capturas con IA. Podes revisar y guardar manualmente.',
         ),
       )
-      setHasAnalyzed(true)
     } finally {
       setIsAnalyzing(false)
     }
@@ -308,11 +421,6 @@ export function NewEntryPage() {
 
     if (requiresImages && pendingImages.length === 0) {
       setSaveErrorMessage('Subi al menos una captura antes de guardar.')
-      return
-    }
-
-    if (requiresImages && !hasAnalyzed) {
-      setSaveErrorMessage('Analiza las capturas antes de guardar la entry.')
       return
     }
 
@@ -370,12 +478,46 @@ export function NewEntryPage() {
   const submitDisabledReason =
     formDefaults.sourceType !== 'link' && pendingImages.length === 0
       ? 'Subi al menos una captura para continuar.'
-      : formDefaults.sourceType !== 'link' && !hasAnalyzed
-        ? 'Analiza las capturas antes de guardar la entry.'
-        : null
+      : null
+  const canSubmitEntry =
+    formDefaults.sourceType === 'link' || pendingImages.length > 0
+
+  useEffect(() => {
+    function handlePaste(event: ClipboardEvent) {
+      const imageFiles = Array.from(event.clipboardData?.items ?? [])
+        .filter((item) => item.type.startsWith('image/'))
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => Boolean(file))
+
+      if (imageFiles.length === 0) {
+        return
+      }
+
+      event.preventDefault()
+      appendImageFiles(imageFiles)
+      setPasteSuccessMessage(
+        imageFiles.length === 1
+          ? 'Imagen pegada. Ahora puedes analizarla.'
+          : `${imageFiles.length} imagenes pegadas. Ahora puedes analizarlas.`,
+      )
+    }
+
+    window.addEventListener('paste', handlePaste)
+
+    return () => {
+      window.removeEventListener('paste', handlePaste)
+    }
+  }, [])
 
   return (
     <section className="page">
+      <div className="detail-back-row">
+        <Link className="detail-back-link" to="/">
+          <span aria-hidden="true">←</span>
+          <span>Volver</span>
+        </Link>
+      </div>
+
       <div className="section-title">
         <h1>Agregar algo nuevo</h1>
         <p>
@@ -391,6 +533,7 @@ export function NewEntryPage() {
             <p>
               Pueden ser capturas o links de recetas, peliculas, series, libros, articulos, lugares, viajes, plantas, huerta o listas.
             </p>
+            <p>Tambien puedes pegar una imagen desde el portapapeles.</p>
           </div>
 
           <div className="upload-actions">
@@ -421,7 +564,21 @@ export function NewEntryPage() {
             >
               {isAnalyzing ? 'Analizando...' : 'Analizar con IA'}
             </button>
+            <button
+              type="button"
+              className="button--ghost"
+              disabled={isPastingImage}
+              onClick={() => {
+                void handlePasteImageFromClipboard()
+              }}
+            >
+              {isPastingImage ? 'Pegando...' : 'Pegar imagen'}
+            </button>
           </div>
+
+          <p className="muted">
+            Usa `Pegar imagen` o el atajo `Ctrl+V` despues de copiar una captura.
+          </p>
 
           <label className="form-field">
             <span>O pega un link</span>
@@ -443,6 +600,13 @@ export function NewEntryPage() {
               Usar link
             </button>
           </div>
+
+          {linkSuccessMessage ? (
+            <p className="feedback feedback--success">{linkSuccessMessage}</p>
+          ) : null}
+          {pasteSuccessMessage ? (
+            <p className="feedback feedback--success">{pasteSuccessMessage}</p>
+          ) : null}
 
           {pendingImages.length === 0 ? (
             <p className="muted">
@@ -494,7 +658,7 @@ export function NewEntryPage() {
       </article>
 
       <div className="card-grid card-grid--two">
-        <article className="card">
+        <article className="card" ref={formSectionRef}>
           <div className="section-title">
             <h2>2. Estado del analisis</h2>
             <p>
@@ -551,7 +715,7 @@ export function NewEntryPage() {
             isSubmitting={isSubmitting}
             submitLabel="Guardar en tu archivo"
             submitBusyLabel="Guardando..."
-            canSubmit={Boolean(hasAnalyzed && pendingImages.length > 0)}
+            canSubmit={canSubmitEntry}
             submitDisabledReason={submitDisabledReason}
             errorMessage={saveErrorMessage}
             successMessage={saveSuccessMessage}

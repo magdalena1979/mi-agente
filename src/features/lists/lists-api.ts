@@ -15,6 +15,13 @@ type ListRow = {
   invitations?: InvitationRow[] | null
 }
 
+type SimpleListRow = {
+  id: string
+  name: string
+  owner_id: string
+  created_at: string
+}
+
 type ListMemberRow = {
   id: string
   list_id: string
@@ -121,33 +128,49 @@ export async function ensureDefaultList(userId: string) {
 
   const { data: existingLists, error: selectError } = await client
     .from('lists')
-    .select(LIST_SELECT)
+    .select('id,name,owner_id,created_at')
+    .eq('owner_id', userId)
     .order('created_at', { ascending: true })
 
   if (selectError) {
     throw selectError
   }
 
-  const firstOwnedList = (existingLists ?? [])[0] as ListRow | undefined
+  const firstOwnedList = (existingLists ?? [])[0] as SimpleListRow | undefined
 
   if (firstOwnedList) {
-    return mapListRow(firstOwnedList)
+    return {
+      id: firstOwnedList.id,
+      name: firstOwnedList.name,
+      ownerId: firstOwnedList.owner_id,
+      createdAt: firstOwnedList.created_at,
+      members: [],
+      pendingInvitations: [],
+    }
   }
 
-  const { data, error } = await client
+  const newListId = crypto.randomUUID()
+
+  const { error } = await client
     .from('lists')
     .insert({
+      id: newListId,
       name: DEFAULT_LIST_NAME,
       owner_id: userId,
     })
-    .select(LIST_SELECT)
-    .single()
 
   if (error) {
     throw error
   }
 
-  return mapListRow(data as ListRow)
+  return {
+    id: newListId,
+    name: DEFAULT_LIST_NAME,
+    ownerId: userId,
+    createdAt: new Date().toISOString(),
+    members: [],
+    pendingInvitations: [],
+  }
 }
 
 export async function listAccessibleLists() {

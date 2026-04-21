@@ -85,6 +85,17 @@ function getDetailFacts(entry: EntryRecord) {
   return [...baseFacts, ...metadataFacts]
 }
 
+function BackLink() {
+  return (
+    <div className="detail-back-row">
+      <Link className="detail-back-link" to="/">
+        <span aria-hidden="true">←</span>
+        <span>Volver</span>
+      </Link>
+    </div>
+  )
+}
+
 export function EntryDetailPage() {
   const navigate = useNavigate()
   const { entryId } = useParams()
@@ -220,6 +231,8 @@ export function EntryDetailPage() {
   if (isLoading) {
     return (
       <section className="page">
+        <BackLink />
+
         <article className="card">
           <h2>Cargando entry</h2>
           <p>Estamos trayendo la informacion desde Supabase.</p>
@@ -231,6 +244,8 @@ export function EntryDetailPage() {
   if (!entry) {
     return (
       <section className="page">
+        <BackLink />
+
         <article className="card">
           <h2>Entry no disponible</h2>
           <p>{errorMessage ?? 'No pudimos encontrar esta entry.'}</p>
@@ -246,12 +261,7 @@ export function EntryDetailPage() {
 
   return (
     <section className="page page--detail">
-      <div className="detail-back-row">
-        <Link className="detail-back-link" to="/">
-          <span aria-hidden="true">←</span>
-          <span>Volver</span>
-        </Link>
-      </div>
+      <BackLink />
 
       <article className="detail-hero">
         <div className="detail-hero__content">
