@@ -535,6 +535,12 @@ button {
   border: 1px solid var(--border);
 }
 
+.share-person-card__actions {
+  display: grid;
+  gap: 0.55rem;
+  justify-items: end;
+}
+
 .share-person-card__copy {
   display: grid;
   gap: 0.18rem;

@@ -187,6 +187,22 @@ export async function listSentEntriesShareInvitations(userId: string) {
   return ((data ?? []) as InvitationRow[]).map(mapInvitationRow)
 }
 
+export async function revokeEntriesShare(invitationId: string) {
+  const client = getClient()
+
+  const { data, error } = await client.functions.invoke('revoke-share', {
+    body: {
+      invitationId,
+    },
+  })
+
+  if (error) {
+    throw error
+  }
+
+  return data
+}
+
 export async function markEntryNotificationAsRead(notificationId: string) {
   const client = getClient()
 

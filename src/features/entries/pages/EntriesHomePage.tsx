@@ -9,6 +9,7 @@ import { ShareEntriesModal } from '@/features/sharing/components/ShareEntriesMod
 import {
   listSentEntriesShareInvitations,
   listEntryUserMarks,
+  revokeEntriesShare,
   upsertEntryUserMark,
 } from '@/features/sharing/sharing-api'
 import type { EntryRecord, EntryType, EntryUserMarkRecord } from '@/types/entries'
@@ -116,6 +117,7 @@ export function EntriesHomePage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [markingId, setMarkingId] = useState<string | null>(null)
+  const [revokingInvitationId, setRevokingInvitationId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [activeType, setActiveType] = useState<EntryTypeFilter>('all')
   const [showUncheckedOnly, setShowUncheckedOnly] = useState(false)
@@ -324,6 +326,41 @@ export function EntriesHomePage() {
     }
   }
 
+  async function handleRevokeShare(invitation: InvitationRecord) {
+    const actionLabel =
+      invitation.status === 'accepted'
+        ? `dejar de compartir con ${invitation.email}`
+        : `cancelar la invitacion para ${invitation.email}`
+
+    const confirmed = window.confirm(
+      `Vas a ${actionLabel}. Esta accion no elimina la cuenta de la otra persona.`,
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    setRevokingInvitationId(invitation.id)
+    setErrorMessage(null)
+
+    try {
+      await revokeEntriesShare(invitation.id)
+      setSharedInvitations((currentInvitations) =>
+        currentInvitations.filter(
+          (currentInvitation) => currentInvitation.id !== invitation.id,
+        ),
+      )
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : 'No pudimos actualizar esta relacion compartida.',
+      )
+    } finally {
+      setRevokingInvitationId(null)
+    }
+  }
+
   return (
     <section className="page page--library">
       <header className="library-header">
@@ -438,15 +475,32 @@ export function EntriesHomePage() {
                     </span>
                   </div>
 
-                  <span
-                    className={
-                      invitation.status === 'accepted'
-                        ? 'share-person-card__status share-person-card__status--active'
-                        : 'share-person-card__status'
-                    }
-                  >
-                    {invitation.status === 'accepted' ? 'Activo' : 'Pendiente'}
-                  </span>
+                  <div className="share-person-card__actions">
+                    <span
+                      className={
+                        invitation.status === 'accepted'
+                          ? 'share-person-card__status share-person-card__status--active'
+                          : 'share-person-card__status'
+                      }
+                    >
+                      {invitation.status === 'accepted' ? 'Activo' : 'Pendiente'}
+                    </span>
+
+                    <button
+                      type="button"
+                      className="button--subtle-danger"
+                      disabled={revokingInvitationId === invitation.id}
+                      onClick={() => {
+                        void handleRevokeShare(invitation)
+                      }}
+                    >
+                      {revokingInvitationId === invitation.id
+                        ? 'Actualizando...'
+                        : invitation.status === 'accepted'
+                          ? 'Dejar de compartir'
+                          : 'Cancelar invitacion'}
+                    </button>
+                  </div>
                 </article>
               ))}
             </div>
