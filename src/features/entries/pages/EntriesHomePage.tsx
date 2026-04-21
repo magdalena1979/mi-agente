@@ -118,6 +118,7 @@ export function EntriesHomePage() {
   const [markingId, setMarkingId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [activeType, setActiveType] = useState<EntryTypeFilter>('all')
+  const [showUncheckedOnly, setShowUncheckedOnly] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [isShareOpen, setIsShareOpen] = useState(false)
 
@@ -241,13 +242,15 @@ export function EntriesHomePage() {
 
     return entries.filter((entry) => {
       const matchesType = activeType === 'all' || entry.type === activeType
+      const isChecked = entryMarksById[entry.id]?.isChecked ?? false
+      const matchesMark = !showUncheckedOnly || !isChecked
       const matchesQuery =
         normalizedQuery.length === 0 ||
         getEntrySearchText(entry).includes(normalizedQuery)
 
-      return matchesType && matchesQuery
+      return matchesType && matchesMark && matchesQuery
     })
-  }, [activeType, entries, searchQuery])
+  }, [activeType, entries, entryMarksById, searchQuery, showUncheckedOnly])
 
   const totalPages = Math.max(1, Math.ceil(filteredEntries.length / PAGE_SIZE))
   const safeCurrentPage = Math.min(currentPage, totalPages)
@@ -395,6 +398,18 @@ export function EntriesHomePage() {
             </button>
           ))}
         </div>
+
+        <label className="entry-mark-toggle">
+          <input
+            type="checkbox"
+            checked={showUncheckedOnly}
+            onChange={(event) => {
+              setShowUncheckedOnly(event.target.checked)
+              setCurrentPage(1)
+            }}
+          />
+          <span>Solo no vistas</span>
+        </label>
       </section>
 
       {user ? (
@@ -402,7 +417,7 @@ export function EntriesHomePage() {
           <div className="share-summary__header">
             <h2>Compartiendo con</h2>
             <span>
-              {acceptedShares.length} activas · {pendingShares.length} pendientes
+              {acceptedShares.length} activas | {pendingShares.length} pendientes
             </span>
           </div>
 
