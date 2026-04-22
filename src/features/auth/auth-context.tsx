@@ -25,6 +25,8 @@ type AuthContextValue = {
   signUp: (credentials: AuthCredentials) => Promise<{
     requiresEmailConfirmation: boolean
   }>
+  resetPasswordForEmail: (email: string, redirectTo: string) => Promise<void>
+  updatePassword: (password: string) => Promise<void>
   signOut: () => Promise<void>
 }
 
@@ -105,6 +107,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return {
           requiresEmailConfirmation: !data.session,
         }
+      },
+      async resetPasswordForEmail(email, redirectTo) {
+        if (!supabase) throw getMissingConfigError()
+
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo,
+        })
+
+        if (error) throw error
+      },
+      async updatePassword(password) {
+        if (!supabase) throw getMissingConfigError()
+
+        const { error } = await supabase.auth.updateUser({
+          password,
+        })
+
+        if (error) throw error
       },
       async signOut() {
         if (!supabase) throw getMissingConfigError()

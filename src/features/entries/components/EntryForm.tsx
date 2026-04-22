@@ -9,7 +9,6 @@ import {
 import {
   entryFormSchema,
   entrySourceOptions,
-  entryStatusOptions,
   type EntryFormValues,
 } from '@/features/entries/entry-form-schema'
 
@@ -22,6 +21,8 @@ type EntryFormProps = {
   successMessage?: string | null
   canSubmit?: boolean
   submitDisabledReason?: string | null
+  formId?: string
+  showActions?: boolean
   onSubmit: (values: EntryFormValues) => Promise<void> | void
   onDelete?: () => Promise<void> | void
   isDeleting?: boolean
@@ -36,6 +37,8 @@ export function EntryForm({
   successMessage,
   canSubmit = true,
   submitDisabledReason,
+  formId,
+  showActions = true,
   onSubmit,
   onDelete,
   isDeleting = false,
@@ -62,7 +65,43 @@ export function EntryForm({
   }, [defaultValues, form])
 
   return (
-    <form className="entry-form" onSubmit={form.handleSubmit(onSubmit)}>
+    <form
+      id={formId}
+      className="entry-form"
+      onSubmit={form.handleSubmit(onSubmit)}
+    >
+      <input type="hidden" {...form.register('status')} />
+      <input type="hidden" {...form.register('extractedText')} />
+
+      {errorMessage ? <p className="feedback feedback--error">{errorMessage}</p> : null}
+      {successMessage ? (
+        <p className="feedback feedback--success">{successMessage}</p>
+      ) : null}
+      {submitDisabledReason && !canSubmit ? (
+        <p className="muted">{submitDisabledReason}</p>
+      ) : null}
+
+      {showActions ? (
+        <div className="entry-form__actions">
+          <button type="submit" className="button" disabled={isSubmitDisabled}>
+            {isSubmitting ? submitBusyLabel : submitLabel}
+          </button>
+
+          {onDelete ? (
+            <button
+              type="button"
+              className="button--danger"
+              disabled={isSubmitting || isDeleting}
+              onClick={() => {
+                void onDelete()
+              }}
+            >
+              {isDeleting ? 'Borrando...' : 'Borrar entry'}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="field-grid">
         <label className="form-field">
           <span>Tipo</span>
@@ -76,17 +115,6 @@ export function EntryForm({
           {form.formState.errors.type ? (
             <small className="form-error">{form.formState.errors.type.message}</small>
           ) : null}
-        </label>
-
-        <label className="form-field">
-          <span>Estado</span>
-          <select {...form.register('status')}>
-            {entryStatusOptions.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
         </label>
       </div>
 
@@ -176,41 +204,6 @@ export function EntryForm({
         </div>
       ) : null}
 
-      <label className="form-field">
-        <span>Texto extraido</span>
-        <textarea
-          rows={8}
-          placeholder="Texto OCR consolidado de todas las capturas."
-          {...form.register('extractedText')}
-        />
-      </label>
-
-      {errorMessage ? <p className="feedback feedback--error">{errorMessage}</p> : null}
-      {successMessage ? (
-        <p className="feedback feedback--success">{successMessage}</p>
-      ) : null}
-      {submitDisabledReason && !canSubmit ? (
-        <p className="muted">{submitDisabledReason}</p>
-      ) : null}
-
-      <div className="entry-form__actions">
-        <button type="submit" className="button" disabled={isSubmitDisabled}>
-          {isSubmitting ? submitBusyLabel : submitLabel}
-        </button>
-
-        {onDelete ? (
-          <button
-            type="button"
-            className="button--danger"
-            disabled={isSubmitting || isDeleting}
-            onClick={() => {
-              void onDelete()
-            }}
-          >
-            {isDeleting ? 'Borrando...' : 'Borrar entry'}
-          </button>
-        ) : null}
-      </div>
     </form>
   )
 }

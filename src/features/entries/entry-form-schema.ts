@@ -18,7 +18,6 @@ import {
 export const entryStatusOptions: EntryStatus[] = [
   'draft',
   'reviewed',
-  'archived',
 ]
 
 export const entrySourceOptions: EntrySourceType[] = ['screenshot', 'manual', 'link']
@@ -37,13 +36,21 @@ export const entryFormSchema = z.object({
   sourceType: z.enum(['screenshot', 'manual', 'link']),
   sourceName: z.string().trim(),
   sourceUrl: z.string().trim(),
-  status: z.enum(['draft', 'reviewed', 'archived']),
+  status: z.enum(['draft', 'reviewed']),
   tagsText: z.string(),
   extractedText: z.string(),
   ...metadataShape,
 })
 
 export type EntryFormValues = z.infer<typeof entryFormSchema>
+
+function normalizeEditableStatus(status?: EntryStatus | null): EntryFormValues['status'] {
+  if (status === 'reviewed') {
+    return 'reviewed'
+  }
+
+  return 'draft'
+}
 
 function createEmptyMetadataValues() {
   return ENTRY_FIELD_KEYS.reduce<Record<EntryFieldKey, string>>(
@@ -93,7 +100,7 @@ export function getEntryFormDefaultValues(
     sourceType: entry.sourceType,
     sourceName: entry.sourceName ?? '',
     sourceUrl: entry.sourceUrl ?? '',
-    status: entry.status,
+    status: normalizeEditableStatus(entry.status),
     tagsText: entry.aiTags.join(', '),
     extractedText: entry.extractedText,
     ...metadataValues,

@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { analyzeEntry } from '@/features/ai/analyze-entry'
 import { useAuth } from '@/features/auth/auth-context'
 import { EntryForm } from '@/features/entries/components/EntryForm'
+import { entryTypeOptions } from '@/features/entries/config/entry-type-config'
 import { createEntry, updateEntry } from '@/features/entries/entries-api'
 import { replaceEntryImages } from '@/features/entries/entry-images-api'
 import {
@@ -24,6 +25,15 @@ type OcrImageResult = {
   status: 'success' | 'error'
   errorMessage: string
 }
+
+const MAX_ENTRY_CAPTURES = 2
+const entryTypeLabelMap = entryTypeOptions.reduce<Record<string, string>>(
+  (labels, option) => {
+    labels[option.type] = option.label
+    return labels
+  },
+  {},
+)
 
 function reindexImages(images: PendingUploadImage[]) {
   return images.map((image, index) => ({
@@ -66,6 +76,77 @@ function inferSourceNameFromLink(link: string) {
   }
 }
 
+function formatSourceTypeLabel(sourceType: EntryFormValues['sourceType']) {
+  switch (sourceType) {
+    case 'link':
+      return 'Link'
+    case 'manual':
+      return 'Manual'
+    default:
+      return 'Captura'
+  }
+}
+
+function getHeroHighlights(
+  values: EntryFormValues,
+  pendingImages: PendingUploadImage[],
+  analysisConfidence: number | null,
+) {
+  const highlights: Array<{ label: string; value: string }> = []
+
+  const pushIfPresent = (label: string, value?: string | null) => {
+    const normalizedValue = value?.trim()
+
+    if (!normalizedValue) {
+      return
+    }
+
+    highlights.push({ label, value: normalizedValue })
+  }
+
+  pushIfPresent('Origen', formatSourceTypeLabel(values.sourceType))
+  pushIfPresent('Fuente', values.sourceName)
+
+  if (pendingImages.length > 0) {
+    highlights.push({
+      label: 'Capturas',
+      value: `${pendingImages.length}/${MAX_ENTRY_CAPTURES}`,
+    })
+  }
+
+  if (analysisConfidence !== null) {
+    highlights.push({
+      label: 'Confianza',
+      value: `${Math.round(analysisConfidence * 100)}%`,
+    })
+  }
+
+  switch (values.type) {
+    case 'movie':
+    case 'series':
+      pushIfPresent('Plataforma', values.platform)
+      pushIfPresent('Director', values.director)
+      pushIfPresent('Genero', values.genre)
+      pushIfPresent('Ano', values.year)
+      break
+    case 'book':
+      pushIfPresent('Autor', values.author)
+      pushIfPresent('Genero', values.genre)
+      break
+    case 'event':
+      pushIfPresent('Fecha', values.date)
+      pushIfPresent('Hora', values.time)
+      pushIfPresent('Lugar', values.location)
+      break
+    default:
+      pushIfPresent('Tema', values.topic)
+      pushIfPresent('Lugar', values.location)
+      break
+  }
+
+  return highlights.slice(0, 6)
+}
+
 export function NewEntryPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -84,7 +165,7 @@ export function NewEntryPage() {
   )
   const [analysisDetectedType, setAnalysisDetectedType] = useState<string | null>(null)
   const [analysisConfidence, setAnalysisConfidence] = useState<number | null>(null)
-  const [analysisTags, setAnalysisTags] = useState<string[]>([])
+  const [analysisRunCount, setAnalysisRunCount] = useState(0)
   const [analysisErrorMessage, setAnalysisErrorMessage] = useState<string | null>(
     null,
   )
@@ -95,6 +176,28 @@ export function NewEntryPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [isPastingImage, setIsPastingImage] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isAnalysisReviewModalOpen, setIsAnalysisReviewModalOpen] = useState(false)
+
+  const typeLabel = entryTypeLabelMap[formDefaults.type] ?? 'Entrada'
+  const heroHighlights = useMemo(
+    () => getHeroHighlights(formDefaults, pendingImages, analysisConfidence),
+    [analysisConfidence, formDefaults, pendingImages],
+  )
+  const heroTags = useMemo(() => parseTags(formDefaults.tagsText), [formDefaults.tagsText])
+  const heroTitle =
+    formDefaults.title.trim() ||
+    (formDefaults.sourceType === 'link'
+      ? 'Link listo para revisar'
+      : pendingImages.length > 0
+        ? 'Capturas listas para analizar'
+        : 'Agrega una nueva entrada')
+  const heroSummary =
+    formDefaults.summary.trim() ||
+    (formDefaults.sourceType === 'link'
+      ? 'Pega un link, completa la ficha y guardalo en tu archivo compartido.'
+      : pendingImages.length > 0
+        ? 'Subi hasta dos capturas, corre la IA y revisa la ficha antes de guardarla.'
+        : 'Subi capturas o usa un link y arma una ficha con el mismo estilo visual del detalle.')
 
   useEffect(() => {
     previewUrlsRef.current = pendingImages.map((image) => image.previewUrl)
@@ -112,12 +215,13 @@ export function NewEntryPage() {
     setCombinedExtractedText('')
     setAnalysisDetectedType(null)
     setAnalysisConfidence(null)
-    setAnalysisTags([])
+    setAnalysisRunCount(0)
     setAnalysisErrorMessage(null)
     setPasteSuccessMessage(null)
     setLinkSuccessMessage(null)
     setSaveErrorMessage(null)
     setSaveSuccessMessage(null)
+    setIsAnalysisReviewModalOpen(false)
     setFormDefaults(
       createEmptyEntryFormValues({
         sourceType: 'screenshot',
@@ -146,7 +250,7 @@ export function NewEntryPage() {
     setCombinedExtractedText('')
     setAnalysisDetectedType(null)
     setAnalysisConfidence(null)
-    setAnalysisTags([])
+    setAnalysisRunCount(0)
     setAnalysisErrorMessage(null)
     setLinkSuccessMessage('Link listo. Completa los datos abajo y guarda la entrada.')
     setSaveErrorMessage(null)
@@ -172,10 +276,24 @@ export function NewEntryPage() {
       return
     }
 
+    if (pendingImages.length >= MAX_ENTRY_CAPTURES) {
+      setAnalysisErrorMessage('Cada entry puede tener como maximo 2 capturas.')
+      return
+    }
+
+    const availableSlots = MAX_ENTRY_CAPTURES - pendingImages.length
+    const filesToAppend = selectedFiles.slice(0, availableSlots)
+
+    if (filesToAppend.length < selectedFiles.length) {
+      setAnalysisErrorMessage('Solo podes guardar hasta 2 capturas por entry.')
+    } else {
+      setAnalysisErrorMessage(null)
+    }
+
     setPendingImages((currentImages) => {
       const nextImages = [
         ...currentImages,
-        ...selectedFiles.map((file, index) => ({
+        ...filesToAppend.map((file, index) => ({
           id: crypto.randomUUID(),
           file,
           previewUrl: URL.createObjectURL(file),
@@ -238,8 +356,8 @@ export function NewEntryPage() {
       appendImageFiles(imageFiles)
       setPasteSuccessMessage(
         imageFiles.length === 1
-          ? 'Imagen pegada. Ahora puedes analizarla.'
-          : `${imageFiles.length} imagenes pegadas. Ahora puedes analizarlas.`,
+          ? 'Imagen pegada. Ahora podes analizarla.'
+          : `${imageFiles.length} imagenes pegadas. Ahora podes analizarlas.`,
       )
     } catch (error) {
       setAnalysisErrorMessage(
@@ -273,15 +391,18 @@ export function NewEntryPage() {
         URL.revokeObjectURL(imageToRemove.previewUrl)
       }
 
-      return reindexImages(
-        currentImages.filter((image) => image.id !== imageId),
-      )
+      return reindexImages(currentImages.filter((image) => image.id !== imageId))
     })
 
     resetAnalysisState()
   }
 
   async function handleAnalyze() {
+    if (analysisRunCount >= 2) {
+      setAnalysisErrorMessage('Ya usaste los 2 analisis disponibles para esta entrada.')
+      return
+    }
+
     if (pendingImages.length === 0) {
       setAnalysisErrorMessage('Subi al menos una captura para analizar.')
       return
@@ -293,7 +414,6 @@ export function NewEntryPage() {
     setSaveSuccessMessage(null)
     setAnalysisDetectedType(null)
     setAnalysisConfidence(null)
-    setAnalysisTags([])
 
     const snapshot = [...pendingImages]
     const ocrTextByImage: OcrImageResult[] = []
@@ -375,15 +495,11 @@ export function NewEntryPage() {
       .join('\n\n')
 
     setCombinedExtractedText(nextCombinedExtractedText)
-    setFormDefaults(
-      getEntryFormValuesFromAnalysis(null, nextCombinedExtractedText),
-    )
+    setFormDefaults(getEntryFormValuesFromAnalysis(null, nextCombinedExtractedText))
 
     if (imagesForAnalysis.length === 0) {
       setIsAnalyzing(false)
-      setAnalysisErrorMessage(
-        'No pudimos preparar ninguna imagen para analisis.',
-      )
+      setAnalysisErrorMessage('No pudimos preparar ninguna imagen para analisis.')
       return
     }
 
@@ -394,12 +510,11 @@ export function NewEntryPage() {
         ocrTextByImage,
       })
 
-      setFormDefaults(
-        getEntryFormValuesFromAnalysis(analysis, nextCombinedExtractedText),
-      )
+      setFormDefaults(getEntryFormValuesFromAnalysis(analysis, nextCombinedExtractedText))
       setAnalysisDetectedType(analysis.detectedType)
       setAnalysisConfidence(analysis.confidence)
-      setAnalysisTags(analysis.tags)
+      setAnalysisRunCount((currentCount) => currentCount + 1)
+      setIsAnalysisReviewModalOpen(true)
     } catch (error) {
       setAnalysisErrorMessage(
         getErrorMessage(
@@ -440,7 +555,10 @@ export function NewEntryPage() {
         status: values.status,
         aiTags: parseTags(values.tagsText),
         extractedText: values.extractedText.trim(),
-        metadata: getEntryMetadataFromForm(values),
+        metadata: {
+          ...getEntryMetadataFromForm(values),
+          aiAnalysisCount: String(analysisRunCount),
+        },
         uploaderName:
           typeof user.user_metadata?.full_name === 'string'
             ? user.user_metadata.full_name
@@ -461,14 +579,12 @@ export function NewEntryPage() {
       if (pendingImages.length > 0) {
         await replaceEntryImages(entry.id, user.id, pendingImages)
       }
+
       setSaveSuccessMessage('Entry guardada correctamente.')
       navigate(`/entries/${entry.id}`, { replace: true })
     } catch (error) {
       setSaveErrorMessage(
-        getErrorMessage(
-          error,
-          'No pudimos guardar la entry y sus capturas.',
-        ),
+        getErrorMessage(error, 'No pudimos guardar la entry y sus capturas.'),
       )
     } finally {
       setIsSubmitting(false)
@@ -479,8 +595,18 @@ export function NewEntryPage() {
     formDefaults.sourceType !== 'link' && pendingImages.length === 0
       ? 'Subi al menos una captura para continuar.'
       : null
-  const canSubmitEntry =
-    formDefaults.sourceType === 'link' || pendingImages.length > 0
+  const canSubmitEntry = formDefaults.sourceType === 'link' || pendingImages.length > 0
+  const canAnalyzeWithAi = pendingImages.length > 0 && analysisRunCount < 2
+
+  function handleOpenReviewStep() {
+    setIsAnalysisReviewModalOpen(false)
+    requestAnimationFrame(() => {
+      formSectionRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    })
+  }
 
   useEffect(() => {
     function handlePaste(event: ClipboardEvent) {
@@ -497,8 +623,8 @@ export function NewEntryPage() {
       appendImageFiles(imageFiles)
       setPasteSuccessMessage(
         imageFiles.length === 1
-          ? 'Imagen pegada. Ahora puedes analizarla.'
-          : `${imageFiles.length} imagenes pegadas. Ahora puedes analizarlas.`,
+          ? 'Imagen pegada. Ahora podes analizarla.'
+          : `${imageFiles.length} imagenes pegadas. Ahora podes analizarlas.`,
       )
     }
 
@@ -507,79 +633,217 @@ export function NewEntryPage() {
     return () => {
       window.removeEventListener('paste', handlePaste)
     }
-  }, [])
+  }, [pendingImages.length])
 
   return (
-    <section className="page">
+    <section className="page page--detail">
+      {isAnalysisReviewModalOpen ? (
+        <div className="modal-backdrop" role="presentation">
+          <div
+            className="modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="analysis-review-title"
+          >
+            <div className="section-title">
+              <h2 id="analysis-review-title">La IA termino el analisis</h2>
+              <p>Chequea la info, editala si hace falta y despues guarda los cambios.</p>
+            </div>
+
+            <div className="entry-form__actions">
+              <button
+                type="button"
+                className="button"
+                onClick={handleOpenReviewStep}
+              >
+                Revisar y editar
+              </button>
+              <button
+                type="button"
+                className="button--ghost"
+                onClick={() => {
+                  setIsAnalysisReviewModalOpen(false)
+                }}
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="detail-back-row">
         <Link className="detail-back-link" to="/">
-          <span aria-hidden="true">←</span>
+          <span aria-hidden="true">&#8592;</span>
           <span>Volver</span>
         </Link>
       </div>
 
-      <div className="section-title">
-        <h1>Agregar algo nuevo</h1>
-        <p>
-          Subi una o varias capturas de la misma cosa, deja que la IA proponga
-          el registro y revisalo antes de guardarlo.
-        </p>
-      </div>
+      <article className="detail-hero detail-hero--new-entry">
+        {pendingImages[0]?.previewUrl ? (
+          <div className="detail-hero__media">
+            <img
+              src={pendingImages[0].previewUrl}
+              alt={`Captura ${pendingImages[0].position + 1}`}
+              className="detail-hero__image"
+            />
+          </div>
+        ) : (
+          <div className="detail-hero__media detail-hero__media--placeholder">
+            <div className="new-entry-placeholder">
+              <strong>{formDefaults.sourceType === 'link' ? 'Link cargado' : 'Nueva entry'}</strong>
+              <span>
+                {formDefaults.sourceType === 'link'
+                  ? 'Completa la ficha, revisa los datos y guardala.'
+                  : 'Subi hasta dos capturas o pega un link para empezar.'}
+              </span>
+            </div>
+          </div>
+        )}
 
-      <article className="card">
-        <div className="card-section">
-          <div className="section-title">
-            <h2>1. Subi capturas</h2>
-            <p>
-              Pueden ser capturas o links de recetas, peliculas, series, libros, articulos, lugares, viajes, plantas, huerta o listas.
-            </p>
-            <p>Tambien puedes pegar una imagen desde el portapapeles.</p>
+        <div className="detail-hero__content">
+          <div className="detail-hero__toprow">
+          <div className="detail-hero__eyebrow">
+              <span className="entry-card__type">
+                {analysisDetectedType ? entryTypeLabelMap[analysisDetectedType] : typeLabel}
+              </span>
+              <span className="detail-chip">{formatSourceTypeLabel(formDefaults.sourceType)}</span>
+              {combinedExtractedText ? <span className="detail-chip">OCR listo</span> : null}
+              {formDefaults.sourceName ? (
+                <span className="detail-chip">{formDefaults.sourceName}</span>
+              ) : null}
+            </div>
+
+            <div className="detail-hero__top-actions">
+              <input
+                ref={inputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="sr-only"
+                onChange={handleFilesSelected}
+              />
+              <button
+                type="button"
+                className="button--ghost"
+                disabled={pendingImages.length >= MAX_ENTRY_CAPTURES}
+                onClick={() => {
+                  inputRef.current?.click()
+                }}
+              >
+                Elegir imagenes
+              </button>
+              <button
+                type="submit"
+                form="entry-new-form"
+                className="button"
+                disabled={isSubmitting || !canSubmitEntry}
+              >
+                {isSubmitting ? 'Guardando...' : 'Guardar en tu archivo'}
+              </button>
+            </div>
           </div>
 
-          <div className="upload-actions">
-            <input
-              ref={inputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              className="sr-only"
-              onChange={handleFilesSelected}
-            />
+          <div className="detail-hero__inline-actions">
             <button
               type="button"
               className="button"
-              onClick={() => {
-                inputRef.current?.click()
-              }}
-            >
-              Elegir imagenes
-            </button>
-            <button
-              type="button"
-              className="button--ghost"
-              disabled={pendingImages.length === 0 || isAnalyzing}
+              disabled={!canAnalyzeWithAi || isAnalyzing}
               onClick={() => {
                 void handleAnalyze()
               }}
             >
-              {isAnalyzing ? 'Analizando...' : 'Analizar con IA'}
+              {isAnalyzing
+                ? 'Analizando...'
+                : analysisRunCount >= 2
+                  ? 'Limite de IA alcanzado'
+                  : 'Analizar con IA'}
             </button>
             <button
               type="button"
               className="button--ghost"
-              disabled={isPastingImage}
+              disabled={isPastingImage || pendingImages.length >= MAX_ENTRY_CAPTURES}
               onClick={() => {
                 void handlePasteImageFromClipboard()
               }}
             >
               {isPastingImage ? 'Pegando...' : 'Pegar imagen'}
             </button>
+            <span className="muted">{analysisRunCount}/2 analisis usados</span>
           </div>
 
-          <p className="muted">
-            Usa `Pegar imagen` o el atajo `Ctrl+V` despues de copiar una captura.
-          </p>
+          <h1>{heroTitle}</h1>
+          {formDefaults.sourceName ? (
+            <p className="detail-hero__source">Visto en {formDefaults.sourceName}</p>
+          ) : null}
+          <p className="detail-hero__summary">{heroSummary}</p>
 
+          {heroHighlights.length > 0 ? (
+            <div className="detail-highlight-grid">
+              {heroHighlights.map((fact) => (
+                <article
+                  key={`${fact.label}-${fact.value}`}
+                  className="detail-highlight-card"
+                >
+                  <span>{fact.label}</span>
+                  <strong>{fact.value}</strong>
+                </article>
+              ))}
+            </div>
+          ) : null}
+
+          {heroTags.length > 0 ? (
+            <div className="detail-tag-row">
+              {heroTags.map((tag) => (
+                <span key={tag} className="detail-chip">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </article>
+
+      <article className="card">
+        <div className="detail-card-header">
+          <div className="section-title">
+            <h2>Carga capturas o link</h2>
+            <p>Podes usar hasta dos capturas de la misma cosa o pegar un link para armar esta ficha.</p>
+          </div>
+
+          <p className="muted new-entry-counts">
+            {pendingImages.length}/{MAX_ENTRY_CAPTURES} capturas cargadas
+          </p>
+        </div>
+
+        <div className="new-entry-toolbar">
+          <button
+            type="button"
+            className="button--ghost"
+            disabled={pendingImages.length >= MAX_ENTRY_CAPTURES}
+            onClick={() => {
+              inputRef.current?.click()
+            }}
+          >
+            Elegir imagenes
+          </button>
+          <button
+            type="button"
+            className="button--ghost"
+            disabled={isPastingImage || pendingImages.length >= MAX_ENTRY_CAPTURES}
+            onClick={() => {
+              void handlePasteImageFromClipboard()
+            }}
+          >
+            {isPastingImage ? 'Pegando...' : 'Pegar imagen'}
+          </button>
+        </div>
+
+        <p className="muted">
+          Usa `Pegar imagen` o el atajo `Ctrl+V` despues de copiar una captura.
+        </p>
+
+        <div className="new-entry-link-row">
           <label className="form-field">
             <span>O pega un link</span>
             <input
@@ -591,7 +855,8 @@ export function NewEntryPage() {
               }}
             />
           </label>
-          <div className="entry-form__actions">
+
+          <div className="new-entry-link-actions">
             <button
               type="button"
               className="button--ghost"
@@ -600,129 +865,67 @@ export function NewEntryPage() {
               Usar link
             </button>
           </div>
-
-          {linkSuccessMessage ? (
-            <p className="feedback feedback--success">{linkSuccessMessage}</p>
-          ) : null}
-          {pasteSuccessMessage ? (
-            <p className="feedback feedback--success">{pasteSuccessMessage}</p>
-          ) : null}
-
-          {pendingImages.length === 0 ? (
-            <p className="muted">
-              Todavia no hay capturas cargadas para esta entrada.
-            </p>
-          ) : (
-            <div className="capture-grid">
-              {pendingImages.map((image) => (
-                <article className="capture-card" key={image.id}>
-                  <img
-                    src={image.previewUrl}
-                    alt={`Captura ${image.position + 1}`}
-                    className="capture-card__image"
-                  />
-                  <div className="capture-card__content">
-                    <strong>
-                      {image.position + 1}. {image.file.name}
-                    </strong>
-                    <span className={`capture-status capture-status--${image.ocrStatus}`}>
-                      OCR: {image.ocrStatus}
-                    </span>
-                    {image.ocrErrorMessage ? (
-                      <small className="form-error">{image.ocrErrorMessage}</small>
-                    ) : image.ocrText ? (
-                      <small className="muted">
-                        {image.ocrText.slice(0, 140)}
-                        {image.ocrText.length > 140 ? '...' : ''}
-                      </small>
-                    ) : (
-                      <small className="muted">
-                        Sin OCR todavia. Analiza para extraer texto.
-                      </small>
-                    )}
-                    <button
-                      type="button"
-                      className="button--ghost button--compact"
-                      onClick={() => {
-                        handleRemoveImage(image.id)
-                      }}
-                    >
-                      Quitar
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
         </div>
+
+        {analysisErrorMessage ? (
+          <p className="feedback feedback--error">{analysisErrorMessage}</p>
+        ) : null}
+        {linkSuccessMessage ? (
+          <p className="feedback feedback--success">{linkSuccessMessage}</p>
+        ) : null}
+        {pasteSuccessMessage ? (
+          <p className="feedback feedback--success">{pasteSuccessMessage}</p>
+        ) : null}
+
+        {pendingImages.length === 0 ? (
+          <p className="muted">Todavia no hay capturas cargadas para esta entrada.</p>
+        ) : (
+          <div className="capture-grid">
+            {pendingImages.map((image) => (
+              <article className="capture-card" key={image.id}>
+                <img
+                  src={image.previewUrl}
+                  alt={`Captura ${image.position + 1}`}
+                  className="capture-card__image"
+                />
+                <div className="capture-card__content">
+                  <strong>Captura {image.position + 1}</strong>
+                  <button
+                    type="button"
+                    className="button--ghost button--compact"
+                    onClick={() => {
+                      handleRemoveImage(image.id)
+                    }}
+                  >
+                    Quitar
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </article>
 
-      <div className="card-grid card-grid--two">
-        <article className="card" ref={formSectionRef}>
-          <div className="section-title">
-            <h2>2. Estado del analisis</h2>
-            <p>
-              Primero corre OCR por captura y despues la IA usa imagen + texto
-              para proponerte un item listo para revisar.
-            </p>
-          </div>
+      <article className="card" ref={formSectionRef}>
+        <div className="section-title">
+          <h2>Editar item</h2>
+          <p>La IA sugiere, vos revisas. Ajusta lo que haga falta y despues guardalo.</p>
+        </div>
 
-          <div className="analysis-summary">
-            <div className="field-card">
-              <strong>Tipo sugerido</strong>
-              <p>{analysisDetectedType ?? 'Sin sugerencia aun'}</p>
-            </div>
-            <div className="field-card">
-              <strong>Confianza</strong>
-              <p>
-                {analysisConfidence !== null
-                  ? `${Math.round(analysisConfidence * 100)}%`
-                  : 'Sin calcular'}
-              </p>
-            </div>
-            <div className="field-card">
-              <strong>Tags sugeridos</strong>
-              <p>{analysisTags.length > 0 ? analysisTags.join(', ') : 'Sin tags aun'}</p>
-            </div>
-          </div>
-
-          {analysisErrorMessage ? (
-            <p className="feedback feedback--error">{analysisErrorMessage}</p>
-          ) : null}
-
-          <label className="form-field">
-            <span>Texto OCR consolidado</span>
-            <textarea
-              rows={10}
-              value={combinedExtractedText}
-              readOnly
-              placeholder="Aca vas a ver el texto consolidado despues del analisis."
-            />
-          </label>
-        </article>
-
-        <article className="card">
-          <div className="section-title">
-            <h2>3. Revisa y guarda</h2>
-            <p>
-              La IA sugiere, vos decidis. Ajusta lo que haga falta y guardalo en
-              tu archivo personal.
-            </p>
-          </div>
-
-          <EntryForm
-            defaultValues={formDefaults}
-            isSubmitting={isSubmitting}
-            submitLabel="Guardar en tu archivo"
-            submitBusyLabel="Guardando..."
-            canSubmit={canSubmitEntry}
-            submitDisabledReason={submitDisabledReason}
-            errorMessage={saveErrorMessage}
-            successMessage={saveSuccessMessage}
-            onSubmit={handleSave}
-          />
-        </article>
-      </div>
+        <EntryForm
+          formId="entry-new-form"
+          defaultValues={formDefaults}
+          isSubmitting={isSubmitting}
+          submitLabel="Guardar en tu archivo"
+          submitBusyLabel="Guardando..."
+          canSubmit={canSubmitEntry}
+          submitDisabledReason={submitDisabledReason}
+          showActions={false}
+          errorMessage={saveErrorMessage}
+          successMessage={saveSuccessMessage}
+          onSubmit={handleSave}
+        />
+      </article>
     </section>
   )
 }

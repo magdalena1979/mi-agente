@@ -1,26 +1,35 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
+import { analyzeEntry } from '@/features/ai/analyze-entry'
 import { useAuth } from '@/features/auth/auth-context'
 import { EntryForm } from '@/features/entries/components/EntryForm'
 import {
-  entryFieldDefinitions,
   entryTypeOptions,
-  getEntryMetadataFieldsForType,
 } from '@/features/entries/config/entry-type-config'
 import {
   deleteEntry,
   getEntry,
   updateEntry,
 } from '@/features/entries/entries-api'
-import { listEntryImages } from '@/features/entries/entry-images-api'
+import {
+  listEntryImages,
+  replaceEntryImages,
+} from '@/features/entries/entry-images-api'
 import {
   getEntryFormDefaultValues,
   getEntryMetadataFromForm,
   parseTags,
   type EntryFormValues,
 } from '@/features/entries/entry-form-schema'
-import type { EntryImageRecord, EntryRecord, EntryType } from '@/types/entries'
+import { createAnalysisImageDataUrl } from '@/features/entries/image-utils'
+import { extractTextFromImage } from '@/features/ocr/services/browser-ocr'
+import type {
+  EntryImageRecord,
+  EntryRecord,
+  EntryType,
+  PendingUploadImage,
+} from '@/types/entries'
 
 const entryTypeLabelMap = entryTypeOptions.reduce<Record<EntryType, string>>(
   (labels, option) => {
@@ -30,6 +39,8 @@ const entryTypeLabelMap = entryTypeOptions.reduce<Record<EntryType, string>>(
   {} as Record<EntryType, string>,
 )
 
+const MAX_ENTRY_CAPTURES = 2
+
 function formatDate(date: string) {
   return new Intl.DateTimeFormat('es-AR', {
     dateStyle: 'medium',
@@ -37,52 +48,89 @@ function formatDate(date: string) {
   }).format(new Date(date))
 }
 
-function getDetailFacts(entry: EntryRecord) {
-  const metadataKeys = getEntryMetadataFieldsForType(entry.type)
+function getAiAnalysisCount(entry: EntryRecord) {
+  const rawValue = (entry.metadata as Record<string, string | undefined>)[
+    'aiAnalysisCount'
+  ] ?? (entry.metadata as Record<string, string | undefined>)['aiRefreshCount']
+  const parsedValue = Number.parseInt(rawValue ?? '0', 10)
 
-  const metadataFacts = metadataKeys
-    .map((key) => {
-      const value = entry.metadata[key]?.trim()
+  return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0
+}
 
-      if (!value) {
-        return null
-      }
+function buildMetadataWithAiAnalysisCount(
+  metadata: EntryRecord['metadata'],
+  aiAnalysisCount: number,
+) {
+  return {
+    ...metadata,
+    aiAnalysisCount: String(aiAnalysisCount),
+  } as EntryRecord['metadata']
+}
 
-      return {
-        label: entryFieldDefinitions[key].label,
-        value,
-      }
-    })
-    .filter(Boolean) as Array<{ label: string; value: string }>
+function getStorageFileName(imagePath: string, fallback: string) {
+  const rawName = imagePath.split('/').pop() || fallback
 
-  const baseFacts = [
-    {
-      label: 'Origen',
-      value: entry.sourceName || entry.sourceType,
-    },
-    ...(entry.sourceUrl
-      ? [
-          {
-            label: 'Link',
-            value: entry.sourceUrl,
-          },
-        ]
-      : []),
-    ...(entry.uploaderName || entry.uploaderEmail
-      ? [
-          {
-            label: 'Subido por',
-            value: entry.uploaderName || entry.uploaderEmail || '',
-          },
-        ]
-      : []),
-    {
-      label: 'Estado',
-      value: entry.status,
-    },
-  ]
+  return rawName.replace(/^\d+-/, '')
+}
 
-  return [...baseFacts, ...metadataFacts]
+function getHeroHighlights(entry: EntryRecord) {
+  const highlights: Array<{ label: string; value: string }> = []
+
+  const pushIfPresent = (label: string, value?: string | null) => {
+    const normalizedValue = value?.trim()
+
+    if (!normalizedValue) {
+      return
+    }
+
+    highlights.push({ label, value: normalizedValue })
+  }
+
+  switch (entry.type) {
+    case 'movie':
+    case 'series':
+      pushIfPresent('Director', entry.metadata.director)
+      pushIfPresent('Plataforma', entry.metadata.platform)
+      pushIfPresent('Genero', entry.metadata.genre)
+      pushIfPresent('Ano', entry.metadata.year)
+      pushIfPresent('Duracion', entry.metadata.duration)
+      pushIfPresent('Reparto', entry.metadata.cast)
+      break
+    case 'book':
+      pushIfPresent('Autor', entry.metadata.author)
+      pushIfPresent('Genero', entry.metadata.genre)
+      pushIfPresent('Ano', entry.metadata.year)
+      break
+    case 'event':
+      pushIfPresent('Fecha', entry.metadata.date)
+      pushIfPresent('Hora', entry.metadata.time)
+      pushIfPresent('Lugar', entry.metadata.location)
+      break
+    case 'place':
+    case 'trip':
+      pushIfPresent('Lugar', entry.metadata.location)
+      pushIfPresent('Fecha', entry.metadata.date)
+      pushIfPresent('Plataforma', entry.metadata.platform)
+      break
+    case 'article':
+      pushIfPresent('Fuente', entry.sourceName)
+      pushIfPresent('Autor', entry.metadata.author)
+      pushIfPresent('Tema', entry.metadata.topic)
+      break
+    case 'recipe':
+      pushIfPresent('Fuente', entry.sourceName)
+      pushIfPresent('Tema', entry.metadata.topic)
+      break
+    default:
+      pushIfPresent('Fuente', entry.sourceName)
+      pushIfPresent('Tema', entry.metadata.topic)
+      pushIfPresent('Nota', entry.metadata.note)
+      break
+  }
+
+  pushIfPresent('Subio', entry.uploaderName || entry.uploaderEmail)
+
+  return highlights.slice(0, 6)
 }
 
 function BackLink() {
@@ -100,11 +148,14 @@ export function EntryDetailPage() {
   const navigate = useNavigate()
   const { entryId } = useParams()
   const { user } = useAuth()
+  const uploadInputRef = useRef<HTMLInputElement | null>(null)
   const [entry, setEntry] = useState<EntryRecord | null>(null)
   const [entryImages, setEntryImages] = useState<EntryImageRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isReanalyzing, setIsReanalyzing] = useState(false)
+  const [isUploadingCaptures, setIsUploadingCaptures] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
@@ -159,9 +210,78 @@ export function EntryDetailPage() {
   )
 
   const detailFacts = useMemo(
-    () => (entry ? getDetailFacts(entry) : []),
+    () => (entry ? getHeroHighlights(entry) : []),
     [entry],
   )
+
+  const aiAnalysisCount = entry ? getAiAnalysisCount(entry) : 0
+  const canReanalyze = Boolean(entry && entry.status === 'draft' && aiAnalysisCount < 2)
+
+  async function createAnalysisImageFromSavedCapture(image: EntryImageRecord) {
+    if (!image.imageUrl) {
+      throw new Error(
+        'Esta entry no tiene una captura disponible para volver a analizar.',
+      )
+    }
+
+    const response = await fetch(image.imageUrl)
+
+    if (!response.ok) {
+      throw new Error(
+        'No pudimos volver a descargar una de las capturas guardadas.',
+      )
+    }
+
+    const blob = await response.blob()
+    const fileType = blob.type || 'image/jpeg'
+    const extension = fileType.split('/')[1] || 'jpg'
+    const file = new File(
+      [blob],
+      `capture-${image.position + 1}.${extension}`,
+      {
+        type: fileType,
+      },
+    )
+
+    return {
+      name: file.name,
+      type: file.type || 'image/jpeg',
+      position: image.position,
+      dataUrl: await createAnalysisImageDataUrl(file),
+    }
+  }
+
+  async function createPendingUploadImageFromSavedCapture(
+    image: EntryImageRecord,
+  ): Promise<PendingUploadImage> {
+    if (!image.imageUrl) {
+      throw new Error('Falta una captura guardada y no pudimos conservarla.')
+    }
+
+    const response = await fetch(image.imageUrl)
+
+    if (!response.ok) {
+      throw new Error('No pudimos recuperar una captura guardada para actualizarla.')
+    }
+
+    const blob = await response.blob()
+    const fileType = blob.type || 'image/jpeg'
+    const extension = fileType.split('/')[1] || 'jpg'
+    const fileName = getStorageFileName(
+      image.imagePath,
+      `capture-${image.position + 1}.${extension}`,
+    )
+
+    return {
+      id: image.id,
+      file: new File([blob], fileName, { type: fileType }),
+      previewUrl: image.imageUrl,
+      position: image.position,
+      ocrText: image.ocrText,
+      ocrStatus: image.ocrText ? 'success' : 'idle',
+      ocrErrorMessage: null,
+    }
+  }
 
   async function handleUpdate(values: EntryFormValues) {
     if (!user || !entryId || !entry) return
@@ -184,7 +304,10 @@ export function EntryDetailPage() {
         status: values.status,
         aiTags: parseTags(values.tagsText),
         extractedText: values.extractedText.trim(),
-        metadata: getEntryMetadataFromForm(values),
+        metadata: {
+          ...currentEntry.metadata,
+          ...getEntryMetadataFromForm(values),
+        },
         uploaderName: currentEntry.uploaderName,
         uploaderEmail: currentEntry.uploaderEmail,
       })
@@ -228,6 +351,193 @@ export function EntryDetailPage() {
     }
   }
 
+  async function handleReanalyze() {
+    if (!user || !entry) return
+
+    if (entry.status !== 'draft') {
+      setErrorMessage(
+        'Solo puedes volver a correr la IA cuando la entry esta en draft.',
+      )
+      return
+    }
+
+    if (entryImages.length === 0) {
+      setErrorMessage('Esta entry no tiene capturas para volver a analizar.')
+      return
+    }
+
+    if (getAiAnalysisCount(entry) >= 2) {
+      setErrorMessage(
+        'Esta entry ya alcanzo el limite de 2 actualizaciones con IA.',
+      )
+      return
+    }
+
+    setIsReanalyzing(true)
+    setErrorMessage(null)
+    setSuccessMessage(null)
+
+    try {
+      const ocrTextByImage = entryImages.map((image) => ({
+        name:
+          image.imagePath.split('/').pop() || `capture-${image.position + 1}`,
+        position: image.position,
+        text: image.ocrText,
+        status: 'success' as const,
+        errorMessage: '',
+      }))
+
+      const combinedExtractedText = entryImages
+        .map((image) => image.ocrText.trim())
+        .filter(Boolean)
+        .join('\n\n')
+
+      const images = await Promise.all(
+        entryImages.map((image) => createAnalysisImageFromSavedCapture(image)),
+      )
+
+      const analysis = await analyzeEntry({
+        combinedExtractedText,
+        images,
+        ocrTextByImage,
+      })
+      const nextAiAnalysisCount = getAiAnalysisCount(entry) + 1
+
+      const updatedEntry = await updateEntry(entry.id, {
+        userId: user.id,
+        type: analysis.detectedType,
+        title: analysis.title.trim() || entry.title,
+        summary: analysis.summary.trim() || entry.summary,
+        sourceType: entry.sourceType,
+        sourceName: analysis.sourceName.trim() || entry.sourceName,
+        sourceUrl: entry.sourceUrl,
+        status: 'draft',
+        aiTags: analysis.tags.length > 0 ? analysis.tags : entry.aiTags,
+        extractedText: combinedExtractedText || entry.extractedText,
+        metadata: buildMetadataWithAiAnalysisCount(
+          {
+            ...entry.metadata,
+            ...analysis.fields,
+          },
+          nextAiAnalysisCount,
+        ),
+        uploaderName: entry.uploaderName,
+        uploaderEmail: entry.uploaderEmail,
+      })
+
+      setEntry(updatedEntry)
+      setSuccessMessage('La IA actualizo el contenido de esta entry.')
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : 'No pudimos volver a analizar esta entry con IA.',
+      )
+    } finally {
+      setIsReanalyzing(false)
+    }
+  }
+
+  async function handleAddCaptures(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const selectedFiles = Array.from(event.target.files ?? []).filter((file) =>
+      file.type.startsWith('image/'),
+    )
+
+    if (!user || !entry || selectedFiles.length === 0) {
+      return
+    }
+
+    if (!canReanalyze) {
+      setErrorMessage(
+        'Solo puedes agregar mas capturas mientras la entry siga en draft y con IA disponible.',
+      )
+      event.target.value = ''
+      return
+    }
+
+    if (entryImages.length >= MAX_ENTRY_CAPTURES) {
+      setErrorMessage('Cada entry puede tener como maximo 2 capturas.')
+      event.target.value = ''
+      return
+    }
+
+    setIsUploadingCaptures(true)
+    setErrorMessage(null)
+    setSuccessMessage(null)
+
+    try {
+      const existingImages = await Promise.all(
+        entryImages.map((image) => createPendingUploadImageFromSavedCapture(image)),
+      )
+      const availableSlots = MAX_ENTRY_CAPTURES - existingImages.length
+      const filesToAppend = selectedFiles.slice(0, availableSlots)
+
+      if (filesToAppend.length < selectedFiles.length) {
+        setErrorMessage('Solo puedes guardar hasta 2 capturas por entry.')
+      }
+
+      const newImages = await Promise.all(
+        filesToAppend.map(async (file, index) => {
+          const ocrText = await extractTextFromImage(file).catch(() => '')
+
+          return {
+            id: crypto.randomUUID(),
+            file,
+            previewUrl: URL.createObjectURL(file),
+            position: existingImages.length + index,
+            ocrText,
+            ocrStatus: ocrText ? ('success' as const) : ('error' as const),
+            ocrErrorMessage: ocrText ? null : 'No pudimos extraer OCR de esta captura.',
+          }
+        }),
+      )
+
+      const mergedImages = [...existingImages, ...newImages].map((image, index) => ({
+        ...image,
+        position: index,
+      }))
+
+      await replaceEntryImages(entry.id, user.id, mergedImages)
+
+      const refreshedImages = await listEntryImages(entry.id)
+      const nextExtractedText = refreshedImages
+        .map((image) => image.ocrText.trim())
+        .filter(Boolean)
+        .join('\n\n')
+
+      const updatedEntry = await updateEntry(entry.id, {
+        userId: user.id,
+        type: entry.type,
+        title: entry.title,
+        summary: entry.summary,
+        sourceType: entry.sourceType,
+        sourceName: entry.sourceName,
+        sourceUrl: entry.sourceUrl,
+        status: entry.status === 'reviewed' ? 'reviewed' : 'draft',
+        aiTags: entry.aiTags,
+        extractedText: nextExtractedText || entry.extractedText,
+        metadata: entry.metadata,
+        uploaderName: entry.uploaderName,
+        uploaderEmail: entry.uploaderEmail,
+      })
+
+      setEntryImages(refreshedImages)
+      setEntry(updatedEntry)
+      setSuccessMessage('Sumamos las nuevas capturas a esta entry.')
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : 'No pudimos agregar las nuevas capturas.',
+      )
+    } finally {
+      setIsUploadingCaptures(false)
+      event.target.value = ''
+    }
+  }
+
   if (isLoading) {
     return (
       <section className="page">
@@ -264,18 +574,91 @@ export function EntryDetailPage() {
       <BackLink />
 
       <article className="detail-hero">
+        {entryImages[0]?.imageUrl ? (
+          <div className="detail-hero__media">
+            <img
+              src={entryImages[0].imageUrl}
+              alt={entry.title}
+              className="detail-hero__image"
+            />
+          </div>
+        ) : null}
+
         <div className="detail-hero__content">
-          <div className="detail-hero__eyebrow">
-            <span className="entry-card__type">
-              {entryTypeLabelMap[entry.type]}
-            </span>
-            <span className="detail-chip">Actualizado {formatDate(entry.updatedAt)}</span>
+          <div className="detail-hero__toprow">
+            <div className="detail-hero__eyebrow">
+              <span className="entry-card__type">
+                {entryTypeLabelMap[entry.type]}
+              </span>
+              <span className="detail-chip">Actualizado {formatDate(entry.updatedAt)}</span>
+              {entry.sourceName ? <span className="detail-chip">{entry.sourceName}</span> : null}
+            </div>
+
+            <div className="detail-hero__top-actions">
+              <button
+                type="submit"
+                form="entry-detail-form"
+                className="button"
+                disabled={isSubmitting || isDeleting}
+              >
+                {isSubmitting ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+              <button
+                type="button"
+                className="button--danger"
+                disabled={isSubmitting || isDeleting}
+                onClick={() => {
+                  void handleDelete()
+                }}
+              >
+                {isDeleting ? 'Borrando...' : 'Borrar entry'}
+              </button>
+            </div>
           </div>
 
+          {entry.status === 'draft' ? (
+            <div className="detail-hero__inline-actions">
+              <button
+                type="button"
+                className="button"
+                disabled={!canReanalyze || isReanalyzing || isSubmitting || isDeleting}
+                onClick={() => {
+                  void handleReanalyze()
+                }}
+              >
+                {isReanalyzing
+                  ? 'Actualizando con IA...'
+                  : canReanalyze
+                    ? 'Volver a analizar con IA'
+                    : 'Limite de IA alcanzado'}
+              </button>
+              <span className="muted">
+                {aiAnalysisCount}/2 analisis usados
+              </span>
+            </div>
+          ) : null}
+
           <h1>{entry.title}</h1>
-          <p>
+          {entry.sourceName ? (
+            <p className="detail-hero__source">Visto en {entry.sourceName}</p>
+          ) : null}
+          <p className="detail-hero__summary">
             {entry.summary || 'Todavia no agregaste un resumen para este item.'}
           </p>
+
+          {detailFacts.length > 0 ? (
+            <div className="detail-highlight-grid">
+              {detailFacts.map((fact) => (
+                <article
+                  key={`${fact.label}-${fact.value}`}
+                  className="detail-highlight-card"
+                >
+                  <span>{fact.label}</span>
+                  <strong>{fact.value}</strong>
+                </article>
+              ))}
+            </div>
+          ) : null}
 
           {entry.aiTags.length > 0 ? (
             <div className="detail-tag-row">
@@ -288,103 +671,89 @@ export function EntryDetailPage() {
           ) : null}
         </div>
 
-        <div className="detail-hero__actions">
-          <Link className="button--ghost" to="/">
-            Volver al archivo
-          </Link>
-        </div>
       </article>
 
-      <div className="detail-layout">
-        <div className="detail-layout__main">
-          <article className="card">
-            <div className="section-title">
-              <h2>Vista general</h2>
-              <p>Los datos mas importantes del item guardado.</p>
-            </div>
-
-            <div className="detail-facts">
-              {detailFacts.map((fact) => (
-                <div key={`${fact.label}-${fact.value}`} className="detail-fact">
-                  <span>{fact.label}</span>
-                  <strong>{fact.value}</strong>
-                </div>
-              ))}
-            </div>
-          </article>
-
-          <article className="card">
-            <div className="section-title">
-              <h2>Capturas asociadas</h2>
-              <p>Todas las imagenes que quedaron guardadas para esta entrada.</p>
-            </div>
-
-            {entryImages.length === 0 ? (
-              <p className="muted">Esta entry todavia no tiene capturas asociadas.</p>
-            ) : (
-              <div className="capture-grid">
-                {entryImages.map((image) => (
-                  <article key={image.id} className="capture-card">
-                    {image.imageUrl ? (
-                      <img
-                        src={image.imageUrl}
-                        alt={`Captura ${image.position + 1}`}
-                        className="capture-card__image"
-                      />
-                    ) : (
-                      <div className="capture-card__placeholder">Sin preview</div>
-                    )}
-                    <div className="capture-card__content">
-                      <strong>Captura {image.position + 1}</strong>
-                      <small className="muted">{image.imagePath}</small>
-                      <small className="muted">
-                        {image.ocrText
-                          ? image.ocrText.slice(0, 180)
-                          : 'Sin OCR guardado'}
-                        {image.ocrText.length > 180 ? '...' : ''}
-                      </small>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </article>
-
-          <article className="card">
-            <div className="section-title">
-              <h2>Texto OCR</h2>
-              <p>Texto consolidado extraido desde las capturas.</p>
-            </div>
-            <textarea
-              rows={12}
-              value={entry.extractedText}
-              readOnly
-              className="detail-readonly"
-            />
-          </article>
+      <article className="card">
+        <div className="section-title">
+          <h2>Editar item</h2>
+          <p>Ajusta los datos y guarda cuando este listo.</p>
         </div>
 
-        <aside className="detail-layout__side">
-          <article className="card">
-            <div className="section-title">
-              <h2>Editar item</h2>
-              <p>Ajusta los datos y guarda cuando este listo.</p>
-            </div>
+        <EntryForm
+          formId="entry-detail-form"
+          defaultValues={defaultValues}
+          isSubmitting={isSubmitting}
+          isDeleting={isDeleting}
+          showActions={false}
+          submitLabel="Guardar cambios"
+          submitBusyLabel="Guardando..."
+          errorMessage={errorMessage}
+          successMessage={successMessage}
+          onSubmit={handleUpdate}
+          onDelete={handleDelete}
+        />
+      </article>
 
-            <EntryForm
-              defaultValues={defaultValues}
-              isSubmitting={isSubmitting}
-              isDeleting={isDeleting}
-              submitLabel="Guardar cambios"
-              submitBusyLabel="Guardando..."
-              errorMessage={errorMessage}
-              successMessage={successMessage}
-              onSubmit={handleUpdate}
-              onDelete={handleDelete}
-            />
-          </article>
-        </aside>
-      </div>
+      <article className="card">
+        <div className="detail-card-header">
+          <div className="section-title">
+            <h2>Capturas asociadas</h2>
+            <p>Todas las imagenes que quedaron guardadas para esta entrada.</p>
+          </div>
+
+          {canReanalyze && entryImages.length < MAX_ENTRY_CAPTURES ? (
+            <div className="entry-form__actions">
+              <input
+                ref={uploadInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="sr-only"
+                onChange={(event) => {
+                  void handleAddCaptures(event)
+                }}
+              />
+              <button
+                type="button"
+                className="button--ghost"
+                disabled={isUploadingCaptures}
+                onClick={() => {
+                  uploadInputRef.current?.click()
+                }}
+              >
+                {isUploadingCaptures ? 'Agregando capturas...' : 'Agregar mas capturas'}
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        <p className="muted">
+          {entryImages.length}/{MAX_ENTRY_CAPTURES} capturas guardadas.
+        </p>
+
+        {entryImages.length === 0 ? (
+          <p className="muted">Esta entry todavia no tiene capturas asociadas.</p>
+        ) : (
+          <div className="capture-grid">
+            {entryImages.map((image) => (
+              <article key={image.id} className="capture-card">
+                {image.imageUrl ? (
+                  <img
+                    src={image.imageUrl}
+                    alt={`Captura ${image.position + 1}`}
+                    className="capture-card__image"
+                  />
+                ) : (
+                  <div className="capture-card__placeholder">Sin preview</div>
+                )}
+                <div className="capture-card__content">
+                  <strong>Captura {image.position + 1}</strong>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </article>
     </section>
   )
 }

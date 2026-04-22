@@ -4,6 +4,7 @@ import { AppShell } from '@/components/layout/AppShell'
 import { PublicOnlyRoute } from '@/features/auth/PublicOnlyRoute'
 import { RequireAuth } from '@/features/auth/RequireAuth'
 import { AuthPage } from '@/features/auth/pages/AuthPage'
+import { ResetPasswordPage } from '@/features/auth/pages/ResetPasswordPage'
 import { EntriesHomePage } from '@/features/entries/pages/EntriesHomePage'
 import { EntryDetailPage } from '@/features/entries/pages/EntryDetailPage'
 import { NewEntryPage } from '@/features/entries/pages/NewEntryPage'
@@ -30,6 +31,10 @@ export const router = createBrowserRouter([
             <AuthPage />
           </PublicOnlyRoute>
         ),
+      },
+      {
+        path: 'reset-password',
+        element: <ResetPasswordPage />,
       },
       {
         path: 'entries/new',
