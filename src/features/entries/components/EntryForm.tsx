@@ -11,6 +11,7 @@ import {
   entrySourceOptions,
   type EntryFormValues,
 } from '@/features/entries/entry-form-schema'
+import type { UserCategoryRecord } from '@/types/categories'
 
 type EntryFormProps = {
   defaultValues: EntryFormValues
@@ -26,6 +27,11 @@ type EntryFormProps = {
   onSubmit: (values: EntryFormValues) => Promise<void> | void
   onDelete?: () => Promise<void> | void
   isDeleting?: boolean
+  isReadOnly?: boolean
+  availableCategories?: UserCategoryRecord[]
+  selectedCategoryIds?: string[]
+  onToggleCategory?: (categoryId: string) => void
+  onOpenCreateCategory?: () => void
 }
 
 export function EntryForm({
@@ -42,6 +48,11 @@ export function EntryForm({
   onSubmit,
   onDelete,
   isDeleting = false,
+  isReadOnly = false,
+  availableCategories = [],
+  selectedCategoryIds = [],
+  onToggleCategory,
+  onOpenCreateCategory,
 }: EntryFormProps) {
   const form = useForm<EntryFormValues>({
     resolver: zodResolver(entryFormSchema),
@@ -64,10 +75,16 @@ export function EntryForm({
     form.reset(defaultValues)
   }, [defaultValues, form])
 
+  useEffect(() => {
+    if (isReadOnly) {
+      form.reset(defaultValues)
+    }
+  }, [defaultValues, form, isReadOnly])
+
   return (
     <form
       id={formId}
-      className="entry-form"
+      className={isReadOnly ? 'entry-form entry-form--readonly' : 'entry-form'}
       onSubmit={form.handleSubmit(onSubmit)}
     >
       <input type="hidden" {...form.register('status')} />
@@ -102,10 +119,10 @@ export function EntryForm({
         </div>
       ) : null}
 
-      <div className="field-grid">
+      <div className="field-grid field-grid--title-row">
         <label className="form-field">
           <span>Tipo</span>
-          <select {...form.register('type')}>
+          <select {...form.register('type')} disabled={isReadOnly}>
             {entryTypeOptions.map((option) => (
               <option key={option.type} value={option.type}>
                 {option.label}
@@ -116,25 +133,27 @@ export function EntryForm({
             <small className="form-error">{form.formState.errors.type.message}</small>
           ) : null}
         </label>
-      </div>
 
-      <label className="form-field">
-        <span>Titulo</span>
-        <input
-          type="text"
-          placeholder="Ej. El viaje de Chihiro, brownie de banana, feria de libros"
-          {...form.register('title')}
-        />
-        {form.formState.errors.title ? (
-          <small className="form-error">{form.formState.errors.title.message}</small>
-        ) : null}
-      </label>
+        <label className="form-field">
+          <span>Titulo</span>
+          <input
+            type="text"
+            placeholder="Ej. El viaje de Chihiro, brownie de banana, feria de libros"
+            disabled={isReadOnly}
+            {...form.register('title')}
+          />
+          {form.formState.errors.title ? (
+            <small className="form-error">{form.formState.errors.title.message}</small>
+          ) : null}
+        </label>
+      </div>
 
       <label className="form-field">
         <span>Resumen</span>
         <textarea
           rows={4}
           placeholder="Descripcion corta o contexto util para encontrar esta entry despues."
+          disabled={isReadOnly}
           {...form.register('summary')}
         />
       </label>
@@ -142,7 +161,7 @@ export function EntryForm({
       <div className="field-grid">
         <label className="form-field">
           <span>Origen</span>
-          <select {...form.register('sourceType')}>
+          <select {...form.register('sourceType')} disabled={isReadOnly}>
             {entrySourceOptions.map((sourceType) => (
               <option key={sourceType} value={sourceType}>
                 {sourceType}
@@ -156,6 +175,7 @@ export function EntryForm({
           <input
             type="text"
             placeholder="Ej. Instagram, WhatsApp, newsletter, articulo"
+            disabled={isReadOnly}
             {...form.register('sourceName')}
           />
         </label>
@@ -167,6 +187,7 @@ export function EntryForm({
           <input
             type="url"
             placeholder="https://..."
+            disabled={isReadOnly}
             {...form.register('sourceUrl')}
           />
         </label>
@@ -177,25 +198,73 @@ export function EntryForm({
         <input
           type="text"
           placeholder="Separados por coma"
+          disabled={isReadOnly}
           {...form.register('tagsText')}
         />
       </label>
 
+      <div className="form-field">
+        <span>Subcategorias personales</span>
+        <p className="form-helper">
+          Funcionan como tags tuyos para organizar mejor el archivo sin cambiar el tipo de la entry.
+        </p>
+
+        <div className="category-filter-grid category-filter-grid--form">
+          {availableCategories.map((category) => (
+            <button
+              key={category.id}
+              type="button"
+              className={
+                selectedCategoryIds.includes(category.id)
+                  ? 'filter-chip filter-chip--active'
+                  : 'filter-chip'
+              }
+              disabled={isReadOnly}
+              onClick={() => {
+                onToggleCategory?.(category.id)
+              }}
+            >
+              {category.name}
+            </button>
+          ))}
+
+          <button
+            type="button"
+            className="filter-chip filter-chip--add"
+            disabled={isReadOnly}
+            onClick={() => {
+              onOpenCreateCategory?.()
+            }}
+          >
+            {availableCategories.length > 0 ? 'Otra' : 'Crear primera'}
+          </button>
+        </div>
+      </div>
+
       {visibleFields.length > 0 ? (
         <div className="field-grid">
           {visibleFields.map((field) => (
-            <label className="form-field" key={field.key}>
+            <label
+              className={
+                field.key === 'note'
+                  ? 'form-field form-field--full'
+                  : 'form-field'
+              }
+              key={field.key}
+            >
               <span>{field.label}</span>
               {field.input === 'textarea' ? (
                 <textarea
                   rows={field.key === 'ingredientsText' ? 5 : 4}
                   placeholder={field.placeholder}
+                  disabled={isReadOnly}
                   {...form.register(field.key)}
                 />
               ) : (
                 <input
                   type="text"
                   placeholder={field.placeholder}
+                  disabled={isReadOnly}
                   {...form.register(field.key)}
                 />
               )}

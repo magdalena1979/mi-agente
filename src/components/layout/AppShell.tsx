@@ -1,13 +1,10 @@
-import { Link, Outlet, useLocation } from 'react-router-dom'
+import { Outlet } from 'react-router-dom'
 
 import { useAuth } from '@/features/auth/auth-context'
 import { env } from '@/lib/env'
 
 export function AppShell() {
   const { user, isLoading, signOut } = useAuth()
-  const location = useLocation()
-  const authLinkTarget =
-    location.pathname === '/auth' ? '/auth?mode=signIn' : '/auth?mode=signIn'
 
   async function handleSignOut() {
     try {
@@ -43,11 +40,7 @@ export function AppShell() {
                 >
                   Cerrar sesion
                 </button>
-              ) : (
-                <Link to={authLinkTarget} className="button">
-                  Iniciar sesion
-                </Link>
-              )}
+              ) : null}
 
               <p className="header-meta__text header-meta__text--stacked">
                 {isLoading

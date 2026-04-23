@@ -62,16 +62,25 @@ function coerceEntryMetadata(value: unknown): EntryMetadataFields {
   }
 
   const record = value as Record<string, unknown>
+  const metadata: EntryMetadataFields = {}
 
-  return ENTRY_FIELD_KEYS.reduce<EntryMetadataFields>((metadata, key) => {
+  for (const systemKey of ['aiAnalysisCount', 'aiRefreshCount'] as const) {
+    const systemValue = record[systemKey]
+
+    if (typeof systemValue === 'string') {
+      metadata[systemKey] = systemValue
+    }
+  }
+
+  return ENTRY_FIELD_KEYS.reduce<EntryMetadataFields>((nextMetadata, key) => {
     const nextValue = record[key]
 
     if (typeof nextValue === 'string') {
-      metadata[key] = nextValue
+      nextMetadata[key] = nextValue
     }
 
-    return metadata
-  }, {})
+    return nextMetadata
+  }, metadata)
 }
 
 function mapEntryRow(row: EntryRow): EntryRecord {

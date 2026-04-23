@@ -37,7 +37,11 @@ export type EntryStatus = 'draft' | 'reviewed' | 'archived'
 export type EntrySourceType = 'screenshot' | 'manual' | 'link'
 export type PendingUploadOcrStatus = 'idle' | 'processing' | 'success' | 'error'
 
-export type EntryMetadataFields = Partial<Record<EntryFieldKey, string>>
+export type EntryMetadataSystemKey = 'aiAnalysisCount' | 'aiRefreshCount'
+
+export type EntryMetadataFields = Partial<
+  Record<EntryFieldKey | EntryMetadataSystemKey, string>
+>
 
 export type EntryRecord = {
   id: string

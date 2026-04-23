@@ -3,6 +3,13 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { analyzeEntry } from '@/features/ai/analyze-entry'
 import { useAuth } from '@/features/auth/auth-context'
+import {
+  createUserCategory,
+  listEntryUserCategories,
+  listUserCategories,
+  replaceEntryUserCategories,
+} from '@/features/categories/categories-api'
+import { CreateUserCategoryModal } from '@/features/categories/components/CreateUserCategoryModal'
 import { EntryForm } from '@/features/entries/components/EntryForm'
 import {
   entryTypeOptions,
@@ -22,8 +29,14 @@ import {
   parseTags,
   type EntryFormValues,
 } from '@/features/entries/entry-form-schema'
-import { createAnalysisImageDataUrl } from '@/features/entries/image-utils'
+import {
+  createAnalysisImageDataUrl,
+  getAnalysisImageResizeOptions,
+} from '@/features/entries/image-utils'
 import { extractTextFromImage } from '@/features/ocr/services/browser-ocr'
+import type {
+  UserCategoryRecord,
+} from '@/types/categories'
 import type {
   EntryImageRecord,
   EntryRecord,
@@ -156,8 +169,15 @@ export function EntryDetailPage() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [isReanalyzing, setIsReanalyzing] = useState(false)
   const [isUploadingCaptures, setIsUploadingCaptures] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [isEditTransitioning, setIsEditTransitioning] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [availableCategories, setAvailableCategories] = useState<UserCategoryRecord[]>([])
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([])
+  const [isCreateCategoryModalOpen, setIsCreateCategoryModalOpen] = useState(false)
+  const [isSavingCategory, setIsSavingCategory] = useState(false)
+  const [categoryErrorMessage, setCategoryErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
     let ignore = false
@@ -204,6 +224,63 @@ export function EntryDetailPage() {
     }
   }, [entryId, user])
 
+  useEffect(() => {
+    let ignore = false
+
+    async function loadCategories() {
+      if (!user || !entryId) {
+        return
+      }
+
+      try {
+        const [nextCategories, nextAssignments] = await Promise.all([
+          listUserCategories(user.id),
+          listEntryUserCategories(user.id, [entryId]),
+        ])
+
+        if (!ignore) {
+          setAvailableCategories(nextCategories)
+          setSelectedCategoryIds(
+            nextAssignments.map((assignment) => assignment.userCategoryId),
+          )
+        }
+      } catch (error) {
+        if (!ignore) {
+          setCategoryErrorMessage(
+            error instanceof Error
+              ? error.message
+              : 'No pudimos cargar tus subcategorias personales.',
+          )
+        }
+      }
+    }
+
+    void loadCategories()
+
+    return () => {
+      ignore = true
+    }
+  }, [entryId, user])
+
+  useEffect(() => {
+    setIsEditing(false)
+    setIsEditTransitioning(false)
+  }, [entryId])
+
+  useEffect(() => {
+    if (!isEditTransitioning) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setIsEditTransitioning(false)
+    }, 250)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [isEditTransitioning])
+
   const defaultValues = useMemo(
     () => getEntryFormDefaultValues(entry),
     [entry],
@@ -247,7 +324,10 @@ export function EntryDetailPage() {
       name: file.name,
       type: file.type || 'image/jpeg',
       position: image.position,
-      dataUrl: await createAnalysisImageDataUrl(file),
+      dataUrl: await createAnalysisImageDataUrl(
+        file,
+        getAnalysisImageResizeOptions('low-cost'),
+      ),
     }
   }
 
@@ -312,7 +392,14 @@ export function EntryDetailPage() {
         uploaderEmail: currentEntry.uploaderEmail,
       })
 
+      await replaceEntryUserCategories({
+        entryId,
+        userId: user.id,
+        categoryIds: selectedCategoryIds,
+      })
+
       setEntry(updatedEntry)
+      setIsEditing(false)
       setSuccessMessage('Los cambios se guardaron correctamente.')
     } catch (error) {
       setErrorMessage(
@@ -322,6 +409,48 @@ export function EntryDetailPage() {
       )
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  function handleToggleCategory(categoryId: string) {
+    setSelectedCategoryIds((currentIds) =>
+      currentIds.includes(categoryId)
+        ? currentIds.filter((currentId) => currentId !== categoryId)
+        : [...currentIds, categoryId],
+    )
+  }
+
+  async function handleCreateCategory(name: string) {
+    if (!user) {
+      return
+    }
+
+    setIsSavingCategory(true)
+    setCategoryErrorMessage(null)
+
+    try {
+      const nextCategory = await createUserCategory({
+        userId: user.id,
+        name,
+      })
+
+      setAvailableCategories((currentCategories) =>
+        [...currentCategories, nextCategory].sort((leftCategory, rightCategory) =>
+          leftCategory.name.localeCompare(rightCategory.name),
+        ),
+      )
+      setSelectedCategoryIds((currentIds) =>
+        currentIds.includes(nextCategory.id) ? currentIds : [...currentIds, nextCategory.id],
+      )
+      setIsCreateCategoryModalOpen(false)
+    } catch (error) {
+      setCategoryErrorMessage(
+        error instanceof Error
+          ? error.message
+          : 'No pudimos guardar esta subcategoria personal.',
+      )
+    } finally {
+      setIsSavingCategory(false)
     }
   }
 
@@ -353,6 +482,11 @@ export function EntryDetailPage() {
 
   async function handleReanalyze() {
     if (!user || !entry) return
+
+    if (!isEditing) {
+      setErrorMessage('Primero toca Editar para habilitar cambios en esta entry.')
+      return
+    }
 
     if (entry.status !== 'draft') {
       setErrorMessage(
@@ -393,7 +527,11 @@ export function EntryDetailPage() {
         .join('\n\n')
 
       const images = await Promise.all(
-        entryImages.map((image) => createAnalysisImageFromSavedCapture(image)),
+        entryImages
+          .slice()
+          .sort((leftImage, rightImage) => leftImage.position - rightImage.position)
+          .slice(0, 1)
+          .map((image) => createAnalysisImageFromSavedCapture(image)),
       )
 
       const analysis = await analyzeEntry({
@@ -446,6 +584,12 @@ export function EntryDetailPage() {
     )
 
     if (!user || !entry || selectedFiles.length === 0) {
+      return
+    }
+
+    if (!isEditing) {
+      setErrorMessage('Primero toca Editar para agregar mas capturas.')
+      event.target.value = ''
       return
     }
 
@@ -571,21 +715,28 @@ export function EntryDetailPage() {
 
   return (
     <section className="page page--detail">
+      <CreateUserCategoryModal
+        isOpen={isCreateCategoryModalOpen}
+        isSubmitting={isSavingCategory}
+        errorMessage={categoryErrorMessage}
+        onClose={() => {
+          setIsCreateCategoryModalOpen(false)
+          setCategoryErrorMessage(null)
+        }}
+        onSubmit={handleCreateCategory}
+      />
+
       <BackLink />
 
-      <article className="detail-hero">
-        {entryImages[0]?.imageUrl ? (
-          <div className="detail-hero__media">
-            <img
-              src={entryImages[0].imageUrl}
-              alt={entry.title}
-              className="detail-hero__image"
-            />
-          </div>
-        ) : null}
-
+      <article className="detail-hero detail-hero--content-only">
         <div className="detail-hero__content">
-          <div className="detail-hero__toprow">
+          <div
+            className={
+              isEditing
+                ? 'detail-hero__toprow detail-hero__toprow--editing'
+                : 'detail-hero__toprow'
+            }
+          >
             <div className="detail-hero__eyebrow">
               <span className="entry-card__type">
                 {entryTypeLabelMap[entry.type]}
@@ -595,24 +746,54 @@ export function EntryDetailPage() {
             </div>
 
             <div className="detail-hero__top-actions">
-              <button
-                type="submit"
-                form="entry-detail-form"
-                className="button"
-                disabled={isSubmitting || isDeleting}
-              >
-                {isSubmitting ? 'Guardando...' : 'Guardar cambios'}
-              </button>
-              <button
-                type="button"
-                className="button--danger"
-                disabled={isSubmitting || isDeleting}
-                onClick={() => {
-                  void handleDelete()
-                }}
-              >
-                {isDeleting ? 'Borrando...' : 'Borrar entry'}
-              </button>
+              {isEditing ? (
+                <>
+                  <button
+                    type="submit"
+                    form="entry-detail-form"
+                    className="button"
+                    disabled={isSubmitting || isDeleting || isEditTransitioning}
+                  >
+                    {isSubmitting ? 'Guardando...' : 'Guardar cambios'}
+                  </button>
+                  <button
+                    type="button"
+                    className="button--ghost"
+                    disabled={isSubmitting || isDeleting}
+                    onClick={() => {
+                      setIsEditing(false)
+                      setErrorMessage(null)
+                      setSuccessMessage(null)
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="button--danger"
+                    disabled={isSubmitting || isDeleting}
+                    onClick={() => {
+                      void handleDelete()
+                    }}
+                  >
+                    {isDeleting ? 'Borrando...' : 'Borrar entry'}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="button"
+                  disabled={isSubmitting || isDeleting}
+                  onClick={() => {
+                    setIsEditing(true)
+                    setIsEditTransitioning(true)
+                    setErrorMessage(null)
+                    setSuccessMessage(null)
+                  }}
+                >
+                  Editar
+                </button>
+              )}
             </div>
           </div>
 
@@ -621,7 +802,9 @@ export function EntryDetailPage() {
               <button
                 type="button"
                 className="button"
-                disabled={!canReanalyze || isReanalyzing || isSubmitting || isDeleting}
+                disabled={
+                  !isEditing || !canReanalyze || isReanalyzing || isSubmitting || isDeleting
+                }
                 onClick={() => {
                   void handleReanalyze()
                 }}
@@ -635,6 +818,9 @@ export function EntryDetailPage() {
               <span className="muted">
                 {aiAnalysisCount}/2 analisis usados
               </span>
+              {!isEditing ? (
+                <span className="muted">Toca Editar para habilitar acciones.</span>
+              ) : null}
             </div>
           ) : null}
 
@@ -684,11 +870,19 @@ export function EntryDetailPage() {
           defaultValues={defaultValues}
           isSubmitting={isSubmitting}
           isDeleting={isDeleting}
+          isReadOnly={!isEditing}
           showActions={false}
           submitLabel="Guardar cambios"
           submitBusyLabel="Guardando..."
           errorMessage={errorMessage}
           successMessage={successMessage}
+          availableCategories={availableCategories}
+          selectedCategoryIds={selectedCategoryIds}
+          onToggleCategory={handleToggleCategory}
+          onOpenCreateCategory={() => {
+            setCategoryErrorMessage(null)
+            setIsCreateCategoryModalOpen(true)
+          }}
           onSubmit={handleUpdate}
           onDelete={handleDelete}
         />
@@ -716,7 +910,7 @@ export function EntryDetailPage() {
               <button
                 type="button"
                 className="button--ghost"
-                disabled={isUploadingCaptures}
+                disabled={!isEditing || isUploadingCaptures}
                 onClick={() => {
                   uploadInputRef.current?.click()
                 }}
@@ -734,9 +928,9 @@ export function EntryDetailPage() {
         {entryImages.length === 0 ? (
           <p className="muted">Esta entry todavia no tiene capturas asociadas.</p>
         ) : (
-          <div className="capture-grid">
+          <div className="capture-grid capture-grid--compact">
             {entryImages.map((image) => (
-              <article key={image.id} className="capture-card">
+              <article key={image.id} className="capture-card capture-card--compact">
                 {image.imageUrl ? (
                   <img
                     src={image.imageUrl}

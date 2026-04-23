@@ -4,6 +4,8 @@ type ResizeOptions = {
   maxBytes?: number
 }
 
+type AnalysisImageMode = 'default' | 'low-cost'
+
 function getPreferredMimeType() {
   return 'image/jpeg'
 }
@@ -49,7 +51,7 @@ export async function createAnalysisImageDataUrl(
   file: File,
   options: ResizeOptions = {},
 ) {
-  const { maxSide = 1200, quality = 0.76, maxBytes = 1_200_000 } = options
+  const { maxSide = 960, quality = 0.68, maxBytes = 550_000 } = options
   const image = await loadImageElement(file)
   const canvas = document.createElement('canvas')
   let currentMaxSide = maxSide
@@ -80,18 +82,34 @@ export async function createAnalysisImageDataUrl(
 
     if (
       estimatedBytes <= maxBytes ||
-      (currentMaxSide <= 720 && currentQuality <= 0.55)
+      (currentMaxSide <= 640 && currentQuality <= 0.5)
     ) {
       return dataUrl
     }
 
-    if (currentQuality > 0.6) {
-      currentQuality = Math.max(0.6, Number((currentQuality - 0.08).toFixed(2)))
+    if (currentQuality > 0.52) {
+      currentQuality = Math.max(0.52, Number((currentQuality - 0.08).toFixed(2)))
       continue
     }
 
-    currentMaxSide = Math.max(720, Math.round(currentMaxSide * 0.82))
+    currentMaxSide = Math.max(640, Math.round(currentMaxSide * 0.8))
   }
+}
+
+export function getAnalysisImageResizeOptions(mode: AnalysisImageMode = 'default') {
+  if (mode === 'low-cost') {
+    return {
+      maxSide: 820,
+      quality: 0.6,
+      maxBytes: 380_000,
+    } satisfies ResizeOptions
+  }
+
+  return {
+    maxSide: 960,
+    quality: 0.68,
+    maxBytes: 550_000,
+  } satisfies ResizeOptions
 }
 
 export function sanitizeStorageFileName(fileName: string) {

@@ -291,57 +291,30 @@ export function AuthPage() {
 
         <article className="card auth-card auth-card--story">
           <div className="section-title auth-story">
-            <h2>No es solo guardar</h2>
+            <span className="eyebrow">En 4 pasos</span>
+            <h2>Como funciona</h2>
             <p className="auth-story__intro">
-              Tambien es armar un mapa compartido de intereses: peliculas, libros,
-              lugares, recetas o posts que hablan de lo que tenes en comun.
+              Un recorrido simple para pasar de una captura a algo util y compartible.
             </p>
           </div>
 
-          <div className="auth-story__grid">
+          <div className="steps auth-steps auth-steps--showcase">
             {[
-              {
-                title: 'Guardas',
-                copy: 'Capturas y links antes de que se pierdan entre chats, pestanas o guardados sueltos.',
-              },
-              {
-                title: 'Entendes',
-                copy: 'La IA lee la captura, reconoce contexto y te deja una ficha mas util que una simple imagen.',
-              },
-              {
-                title: 'Compartis',
-                copy: 'Podes abrirle ese archivo a alguien con quien compartis gustos, ideas o referencias.',
-              },
-            ].map((item) => (
-              <article key={item.title} className="field-card auth-story__card">
-                <strong>{item.title}</strong>
-                <p>{item.copy}</p>
+              'Cargas capturas o links que te queres guardar.',
+              'OCR + IA entienden de que se trata y proponen una ficha.',
+              'Revisas, editas y lo convertis en algo facil de volver a encontrar.',
+              'Si queres, lo compartis con alguien con quien tenes cosas en comun.',
+            ].map((step, index) => (
+              <article className="auth-step-card" key={step}>
+                <div className="step">
+                  <span className="step__index">{index + 1}</span>
+                  <p>{step}</p>
+                </div>
               </article>
             ))}
           </div>
         </article>
       </div>
-
-      <article className="card auth-card auth-card--steps">
-        <div className="section-title">
-          <h2>Como funciona</h2>
-          <p>Un recorrido simple para pasar de una captura a algo util y compartible.</p>
-        </div>
-
-        <div className="steps auth-steps">
-          {[
-            'Cargas capturas o links que te queres guardar.',
-            'OCR + IA entienden de que se trata y proponen una ficha.',
-            'Revisas, editas y lo convertis en algo facil de volver a encontrar.',
-            'Si queres, lo compartis con alguien con quien tenes cosas en comun.',
-          ].map((step, index) => (
-            <div className="step" key={step}>
-              <span className="step__index">{index + 1}</span>
-              <p>{step}</p>
-            </div>
-          ))}
-        </div>
-      </article>
     </section>
   )
 }

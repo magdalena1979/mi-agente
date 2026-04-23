@@ -1,7 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import {
+  createManyUserCategories,
+  createUserCategory,
+  deleteUserCategory,
+  listEntryUserCategories,
+  listUserCategories,
+} from '@/features/categories/categories-api'
+import { CreateUserCategoryModal } from '@/features/categories/components/CreateUserCategoryModal'
+import { ManageUserCategoriesModal } from '@/features/categories/components/ManageUserCategoriesModal'
+import { UserCategorySetupModal } from '@/features/categories/components/UserCategorySetupModal'
 import { useAuth } from '@/features/auth/auth-context'
+import { DEFAULT_USER_CATEGORY_NAMES, type UserCategoryRecord } from '@/types/categories'
 import { entryTypeOptions } from '@/features/entries/config/entry-type-config'
 import { deleteEntry, listEntries } from '@/features/entries/entries-api'
 import { NotificationsBell } from '@/features/sharing/components/NotificationsBell'
@@ -15,7 +26,7 @@ import {
 import type { EntryRecord, EntryType, EntryUserMarkRecord } from '@/types/entries'
 import type { InvitationRecord } from '@/types/lists'
 
-type EntryTypeFilter = 'all' | EntryType
+type HomeDesktopTab = 'entries' | 'sharing'
 
 const PAGE_SIZE = 20
 
@@ -110,19 +121,31 @@ function getUploaderLabel(entry: EntryRecord, currentUserId?: string) {
 
 export function EntriesHomePage() {
   const { user } = useAuth()
+  const suggestedCategoryNames = useMemo(() => [...DEFAULT_USER_CATEGORY_NAMES], [])
   const [entries, setEntries] = useState<EntryRecord[]>([])
   const [entryMarksById, setEntryMarksById] = useState<Record<string, EntryUserMarkRecord>>({})
   const [sharedInvitations, setSharedInvitations] = useState<InvitationRecord[]>([])
+  const [userCategories, setUserCategories] = useState<UserCategoryRecord[]>([])
+  const [entryCategoryIdsByEntryId, setEntryCategoryIdsByEntryId] = useState<Record<string, string[]>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [markingId, setMarkingId] = useState<string | null>(null)
   const [revokingInvitationId, setRevokingInvitationId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [activeType, setActiveType] = useState<EntryTypeFilter>('all')
+  const [activeCategoryId, setActiveCategoryId] = useState<'all' | string>('all')
   const [showUncheckedOnly, setShowUncheckedOnly] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [isShareOpen, setIsShareOpen] = useState(false)
+  const [activeDesktopTab, setActiveDesktopTab] = useState<HomeDesktopTab>('entries')
+  const [isCreateCategoryModalOpen, setIsCreateCategoryModalOpen] = useState(false)
+  const [isSavingCategory, setIsSavingCategory] = useState(false)
+  const [isManageCategoriesModalOpen, setIsManageCategoriesModalOpen] = useState(false)
+  const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null)
+  const [categoryErrorMessage, setCategoryErrorMessage] = useState<string | null>(null)
+  const [isSetupModalOpen, setIsSetupModalOpen] = useState(false)
+  const [isSavingCategorySetup, setIsSavingCategorySetup] = useState(false)
+  const [didDismissCategorySetup, setDidDismissCategorySetup] = useState(false)
 
   useEffect(() => {
     let ignore = false
@@ -155,6 +178,42 @@ export function EntriesHomePage() {
     }
 
     void loadEntries()
+
+    return () => {
+      ignore = true
+    }
+  }, [user])
+
+  useEffect(() => {
+    let ignore = false
+
+    async function loadUserCategories() {
+      if (!user) {
+        if (!ignore) {
+          setUserCategories([])
+          setEntryCategoryIdsByEntryId({})
+        }
+        return
+      }
+
+      try {
+        const nextCategories = await listUserCategories(user.id)
+
+        if (!ignore) {
+          setUserCategories(nextCategories)
+        }
+      } catch (error) {
+        if (!ignore) {
+          setCategoryErrorMessage(
+            error instanceof Error
+              ? error.message
+              : 'No pudimos cargar tus subcategorias personales.',
+          )
+        }
+      }
+    }
+
+    void loadUserCategories()
 
     return () => {
       ignore = true
@@ -207,6 +266,53 @@ export function EntriesHomePage() {
   useEffect(() => {
     let ignore = false
 
+    async function loadEntryCategories() {
+      if (!user || entries.length === 0) {
+        if (!ignore) {
+          setEntryCategoryIdsByEntryId({})
+        }
+        return
+      }
+
+      try {
+        const assignments = await listEntryUserCategories(
+          user.id,
+          entries.map((entry) => entry.id),
+        )
+
+        if (!ignore) {
+          setEntryCategoryIdsByEntryId(
+            assignments.reduce<Record<string, string[]>>((accumulator, assignment) => {
+              accumulator[assignment.entryId] = [
+                ...(accumulator[assignment.entryId] ?? []),
+                assignment.userCategoryId,
+              ]
+
+              return accumulator
+            }, {}),
+          )
+        }
+      } catch (error) {
+        if (!ignore) {
+          setErrorMessage(
+            error instanceof Error
+              ? error.message
+              : 'No pudimos cargar las categorias de tus entries.',
+          )
+        }
+      }
+    }
+
+    void loadEntryCategories()
+
+    return () => {
+      ignore = true
+    }
+  }, [entries, user])
+
+  useEffect(() => {
+    let ignore = false
+
     async function loadSharedPeople() {
       if (!user) {
         if (!ignore) {
@@ -243,16 +349,39 @@ export function EntriesHomePage() {
     const normalizedQuery = searchQuery.trim().toLowerCase()
 
     return entries.filter((entry) => {
-      const matchesType = activeType === 'all' || entry.type === activeType
+      const matchesCategory =
+        activeCategoryId === 'all' ||
+        (entryCategoryIdsByEntryId[entry.id] ?? []).includes(activeCategoryId)
       const isChecked = entryMarksById[entry.id]?.isChecked ?? false
       const matchesMark = !showUncheckedOnly || !isChecked
       const matchesQuery =
         normalizedQuery.length === 0 ||
         getEntrySearchText(entry).includes(normalizedQuery)
 
-      return matchesType && matchesMark && matchesQuery
+      return matchesCategory && matchesMark && matchesQuery
     })
-  }, [activeType, entries, entryMarksById, searchQuery, showUncheckedOnly])
+  }, [activeCategoryId, entries, entryCategoryIdsByEntryId, entryMarksById, searchQuery, showUncheckedOnly])
+
+  useEffect(() => {
+    if (
+      activeCategoryId !== 'all' &&
+      !userCategories.some((category) => category.id === activeCategoryId)
+    ) {
+      setActiveCategoryId('all')
+    }
+  }, [activeCategoryId, userCategories])
+
+  useEffect(() => {
+    if (!user) {
+      setDidDismissCategorySetup(false)
+      setIsSetupModalOpen(false)
+      return
+    }
+
+    if (userCategories.length === 0 && !didDismissCategorySetup) {
+      setIsSetupModalOpen(true)
+    }
+  }, [didDismissCategorySetup, user, userCategories.length])
 
   const totalPages = Math.max(1, Math.ceil(filteredEntries.length / PAGE_SIZE))
   const safeCurrentPage = Math.min(currentPage, totalPages)
@@ -361,10 +490,215 @@ export function EntriesHomePage() {
     }
   }
 
+  async function refreshUserCategories() {
+    if (!user) {
+      return []
+    }
+
+    const nextCategories = await listUserCategories(user.id)
+    setUserCategories(nextCategories)
+    return nextCategories
+  }
+
+  async function refreshEntryCategoryAssignments() {
+    if (!user || entries.length === 0) {
+      setEntryCategoryIdsByEntryId({})
+      return {}
+    }
+
+    const assignments = await listEntryUserCategories(
+      user.id,
+      entries.map((entry) => entry.id),
+    )
+    const nextAssignments = assignments.reduce<Record<string, string[]>>((accumulator, assignment) => {
+      accumulator[assignment.entryId] = [
+        ...(accumulator[assignment.entryId] ?? []),
+        assignment.userCategoryId,
+      ]
+
+      return accumulator
+    }, {})
+
+    setEntryCategoryIdsByEntryId(nextAssignments)
+    return nextAssignments
+  }
+
+  async function handleCreateCategory(name: string) {
+    if (!user) {
+      return
+    }
+
+    setIsSavingCategory(true)
+    setCategoryErrorMessage(null)
+
+    try {
+      const nextCategory = await createUserCategory({
+        userId: user.id,
+        name,
+      })
+
+      setUserCategories((currentCategories) =>
+        [...currentCategories, nextCategory].sort((leftCategory, rightCategory) =>
+          leftCategory.name.localeCompare(rightCategory.name),
+        ),
+      )
+      setActiveCategoryId(nextCategory.id)
+      setIsCreateCategoryModalOpen(false)
+    } catch (error) {
+      setCategoryErrorMessage(
+        error instanceof Error
+          ? error.message
+          : 'No pudimos guardar esta subcategoria personal.',
+      )
+    } finally {
+      setIsSavingCategory(false)
+    }
+  }
+
+  async function handleSetupCategories(input: {
+    selectedNames: string[]
+    customName: string
+  }) {
+    if (!user) {
+      return
+    }
+
+    setIsSavingCategorySetup(true)
+    setCategoryErrorMessage(null)
+
+    try {
+      await createManyUserCategories({
+        userId: user.id,
+        names: [...input.selectedNames, input.customName],
+      })
+
+      const nextCategories = await refreshUserCategories()
+
+      setDidDismissCategorySetup(true)
+      setIsSetupModalOpen(false)
+
+      if (nextCategories[0]) {
+        setActiveCategoryId(nextCategories[0].id)
+      }
+    } catch (error) {
+      setCategoryErrorMessage(
+        error instanceof Error
+          ? error.message
+          : 'No pudimos guardar tus subcategorias personales.',
+      )
+    } finally {
+      setIsSavingCategorySetup(false)
+    }
+  }
+
+  async function handleDeleteCategory(category: UserCategoryRecord) {
+    if (!user) {
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Vas a borrar "${category.name}" de tus subcategorias. Tambien se va a sacar de las entries donde la estabas usando.`,
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    setDeletingCategoryId(category.id)
+    setCategoryErrorMessage(null)
+
+    try {
+      await deleteUserCategory({
+        userId: user.id,
+        categoryId: category.id,
+      })
+
+      const nextCategories = await refreshUserCategories()
+      await refreshEntryCategoryAssignments()
+
+      if (!nextCategories.some((currentCategory) => currentCategory.id === activeCategoryId)) {
+        setActiveCategoryId('all')
+      }
+    } catch (error) {
+      setCategoryErrorMessage(
+        error instanceof Error
+          ? error.message
+          : 'No pudimos borrar esta subcategoria personal.',
+      )
+    } finally {
+      setDeletingCategoryId(null)
+    }
+  }
+
   return (
     <section className="page page--library">
+      <CreateUserCategoryModal
+        isOpen={isCreateCategoryModalOpen}
+        isSubmitting={isSavingCategory}
+        errorMessage={categoryErrorMessage}
+        onClose={() => {
+          setIsCreateCategoryModalOpen(false)
+          setCategoryErrorMessage(null)
+        }}
+        onSubmit={handleCreateCategory}
+      />
+
+      <ManageUserCategoriesModal
+        isOpen={isManageCategoriesModalOpen}
+        categories={userCategories}
+        deletingCategoryId={deletingCategoryId}
+        errorMessage={categoryErrorMessage}
+        onClose={() => {
+          setIsManageCategoriesModalOpen(false)
+          setCategoryErrorMessage(null)
+        }}
+        onDelete={handleDeleteCategory}
+      />
+
+      <UserCategorySetupModal
+        isOpen={isSetupModalOpen}
+        suggestedNames={suggestedCategoryNames}
+        isSubmitting={isSavingCategorySetup}
+        errorMessage={categoryErrorMessage}
+        onClose={() => {
+          setDidDismissCategorySetup(true)
+          setIsSetupModalOpen(false)
+          setCategoryErrorMessage(null)
+        }}
+        onSubmit={handleSetupCategories}
+      />
+
       <header className="library-header">
-        <div />
+        <div className="library-header__main">
+          <div className="library-tabs" aria-label="Secciones principales">
+            <button
+              type="button"
+              className={
+                activeDesktopTab === 'entries'
+                  ? 'library-tab library-tab--active'
+                  : 'library-tab'
+              }
+              onClick={() => {
+                setActiveDesktopTab('entries')
+              }}
+            >
+              Archivo
+            </button>
+            <button
+              type="button"
+              className={
+                activeDesktopTab === 'sharing'
+                  ? 'library-tab library-tab--active'
+                  : 'library-tab'
+              }
+              onClick={() => {
+                setActiveDesktopTab('sharing')
+              }}
+            >
+              Share with
+            </button>
+          </div>
+        </div>
 
         <div className="library-header__actions">
           <NotificationsBell />
@@ -372,7 +706,7 @@ export function EntriesHomePage() {
           {user ? (
             <button
               type="button"
-              className="button--ghost"
+              className="button--ghost library-share-trigger"
               onClick={() => {
                 setIsShareOpen(true)
               }}
@@ -387,75 +721,261 @@ export function EntriesHomePage() {
         </div>
       </header>
 
-      <section className="library-toolbar">
-        <label className="search-field">
-          <span className="sr-only">Buscar en tu archivo</span>
-          <input
-            type="search"
-            value={searchQuery}
-            placeholder="Buscar por titulo, autor, genero o plataforma"
-            onChange={(event) => {
-              setSearchQuery(event.target.value)
-              setCurrentPage(1)
-            }}
-          />
-        </label>
+      {errorMessage ? <p className="feedback feedback--error">{errorMessage}</p> : null}
 
-        <div className="filter-row" aria-label="Filtrar por tipo">
-          <button
-            type="button"
-            className={
-              activeType === 'all'
-                ? 'filter-chip filter-chip--active'
-                : 'filter-chip'
-            }
-            onClick={() => {
-              setActiveType('all')
-              setCurrentPage(1)
-            }}
-          >
-            Todo
-          </button>
+      {activeDesktopTab === 'entries' ? (
+        <>
+          <section className="library-toolbar">
+            <label className="search-field">
+              <span className="sr-only">Buscar en tu archivo</span>
+              <input
+                type="search"
+                value={searchQuery}
+                placeholder="Buscar por titulo, autor, genero o plataforma"
+                onChange={(event) => {
+                  setSearchQuery(event.target.value)
+                  setCurrentPage(1)
+                }}
+              />
+            </label>
 
-          {entryTypeOptions.map((option) => (
-            <button
-              key={option.type}
-              type="button"
-              className={
-                activeType === option.type
-                  ? 'filter-chip filter-chip--active'
-                  : 'filter-chip'
-              }
+            <div className="filter-row" aria-label="Filtrar por subcategoria personal">
+              <button
+                type="button"
+                className={
+                  activeCategoryId === 'all'
+                    ? 'filter-chip filter-chip--active'
+                    : 'filter-chip'
+                }
                 onClick={() => {
-                  setActiveType(option.type)
+                  setActiveCategoryId('all')
                   setCurrentPage(1)
                 }}
               >
-                {option.label}
-            </button>
-          ))}
-        </div>
+                Todo
+              </button>
 
-        <label className="entry-mark-toggle">
-          <input
-            type="checkbox"
-            checked={showUncheckedOnly}
-            onChange={(event) => {
-              setShowUncheckedOnly(event.target.checked)
-              setCurrentPage(1)
-            }}
-          />
-          <span>Solo no vistas</span>
-        </label>
-      </section>
+              {userCategories.map((category) => (
+                <button
+                  key={category.id}
+                  type="button"
+                  className={
+                    activeCategoryId === category.id
+                      ? 'filter-chip filter-chip--active'
+                      : 'filter-chip'
+                  }
+                  onClick={() => {
+                    setActiveCategoryId(category.id)
+                    setCurrentPage(1)
+                  }}
+                >
+                  {category.name}
+                </button>
+              ))}
 
-      {user ? (
+              <button
+                type="button"
+                className="filter-chip filter-chip--add"
+                onClick={() => {
+                  setCategoryErrorMessage(null)
+                  setIsCreateCategoryModalOpen(true)
+                }}
+              >
+                Otra
+              </button>
+            </div>
+
+            <div className="library-toolbar__actions">
+              <button
+                type="button"
+                className="button--ghost"
+                onClick={() => {
+                  setCategoryErrorMessage(null)
+                  setIsManageCategoriesModalOpen(true)
+                }}
+              >
+                Editar categorias
+              </button>
+            </div>
+
+            <label className="entry-mark-toggle">
+              <input
+                type="checkbox"
+                checked={showUncheckedOnly}
+                onChange={(event) => {
+                  setShowUncheckedOnly(event.target.checked)
+                  setCurrentPage(1)
+                }}
+              />
+              <span>Solo no vistas</span>
+            </label>
+          </section>
+
+          {isLoading ? (
+            <article className="card card--flat">
+              <h2>Cargando tu archivo</h2>
+              <p>Estamos trayendo tus cosas guardadas.</p>
+            </article>
+          ) : entries.length === 0 ? (
+            <article className="card card--flat empty-state">
+              <h2>Todavia no guardaste nada</h2>
+              <p>
+                Empeza con una captura. La idea es que no tengas que mandarte cosas a
+                WhatsApp para recordarlas despues.
+              </p>
+              <Link className="button" to="/entries/new">
+                Subir primera captura
+              </Link>
+            </article>
+          ) : filteredEntries.length === 0 ? (
+            <article className="card card--flat empty-state">
+              <h2>No encontramos resultados</h2>
+              <p>Proba otro texto o cambia el filtro de tipo.</p>
+            </article>
+          ) : (
+            <section className="library-table" aria-label="Items guardados">
+              <div className="library-table__head" aria-hidden="true">
+                <span>Item</span>
+                <span>Tipo</span>
+                <span>Subio</span>
+                <span>Actualizado</span>
+                <span>Acciones</span>
+              </div>
+
+              <div className="library-table__body">
+                {paginatedEntries.map((entry) => {
+                  const rowMeta = getRowMeta(entry)
+                  const uploaderLabel = getUploaderLabel(entry, user?.id)
+                  const isChecked = entryMarksById[entry.id]?.isChecked ?? false
+
+                  return (
+                    <article className="library-row" key={entry.id}>
+                      <Link className="library-row__main" to={`/entries/${entry.id}`}>
+                        <div className="library-row__content">
+                          <h2>{entry.title}</h2>
+                          <p>{entry.summary || rowMeta || 'Sin descripcion todavia.'}</p>
+                        </div>
+
+                        <span className="library-row__type">
+                          {typeLabelMap[entry.type]}
+                        </span>
+
+                        <div className="library-row__uploader">
+                          <span>{uploaderLabel}</span>
+                        </div>
+
+                        <div className="library-row__side">
+                          <span>{formatDate(entry.updatedAt)}</span>
+                          {rowMeta ? <small>{rowMeta}</small> : null}
+                        </div>
+                      </Link>
+
+                      <div className="library-row__actions">
+                        <label className="entry-mark-toggle">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            disabled={markingId === entry.id}
+                            onChange={() => {
+                              void handleToggleMark(entry)
+                            }}
+                          />
+                          <span>Visto</span>
+                        </label>
+
+                        <button
+                          type="button"
+                          className="button--subtle-danger button--icon-only"
+                          disabled={deletingId === entry.id}
+                          aria-label={
+                            deletingId === entry.id
+                              ? `Borrando ${entry.title}`
+                              : `Borrar ${entry.title}`
+                          }
+                          title="Borrar"
+                          onClick={() => {
+                            void handleDelete(entry)
+                          }}
+                        >
+                          {deletingId === entry.id ? (
+                            '...'
+                          ) : (
+                            <svg
+                              aria-hidden="true"
+                              viewBox="0 0 24 24"
+                              className="action-icon"
+                            >
+                              <path
+                                d="M9 3h6m-9 4h12m-1 0-.8 11.2A2 2 0 0 1 14.2 20H9.8a2 2 0 0 1-1.99-1.8L7 7m3 4v5m4-5v5"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+
+              {totalPages > 1 ? (
+                <div className="pagination" aria-label="Paginacion de entradas">
+                  <button
+                    type="button"
+                    className="button--ghost"
+                    disabled={safeCurrentPage === 1}
+                    onClick={() => {
+                      setCurrentPage((page) => Math.max(1, page - 1))
+                    }}
+                  >
+                    Anterior
+                  </button>
+
+                  <span className="pagination__status">
+                    Pagina {safeCurrentPage} de {totalPages} - {filteredEntries.length} entradas
+                  </span>
+
+                  <button
+                    type="button"
+                    className="button--ghost"
+                    disabled={safeCurrentPage === totalPages}
+                    onClick={() => {
+                      setCurrentPage((page) => Math.min(totalPages, page + 1))
+                    }}
+                  >
+                    Siguiente
+                  </button>
+                </div>
+              ) : null}
+            </section>
+          )}
+        </>
+      ) : user ? (
         <section className="share-summary" aria-label="Personas con acceso compartido">
           <div className="share-summary__header">
-            <h2>Compartiendo con</h2>
-            <span>
-              {acceptedShares.length} activas | {pendingShares.length} pendientes
-            </span>
+            <div className="section-title">
+              <h2>Compartiendo con</h2>
+              <p>Desde aca podes invitar, revisar y cortar accesos compartidos.</p>
+            </div>
+
+            <div className="share-summary__header-actions">
+              <span>
+                {acceptedShares.length} activas | {pendingShares.length} pendientes
+              </span>
+              <button
+                type="button"
+                className="button"
+                onClick={() => {
+                  setIsShareOpen(true)
+                }}
+              >
+                Share with
+              </button>
+            </div>
           </div>
 
           {sharedInvitations.length === 0 ? (
@@ -507,128 +1027,6 @@ export function EntriesHomePage() {
           )}
         </section>
       ) : null}
-
-      {errorMessage ? <p className="feedback feedback--error">{errorMessage}</p> : null}
-
-      {isLoading ? (
-        <article className="card card--flat">
-          <h2>Cargando tu archivo</h2>
-          <p>Estamos trayendo tus cosas guardadas.</p>
-        </article>
-      ) : entries.length === 0 ? (
-        <article className="card card--flat empty-state">
-          <h2>Todavia no guardaste nada</h2>
-          <p>
-            Empeza con una captura. La idea es que no tengas que mandarte cosas a
-            WhatsApp para recordarlas despues.
-          </p>
-          <Link className="button" to="/entries/new">
-            Subir primera captura
-          </Link>
-        </article>
-      ) : filteredEntries.length === 0 ? (
-        <article className="card card--flat empty-state">
-          <h2>No encontramos resultados</h2>
-          <p>Proba otro texto o cambia el filtro de tipo.</p>
-        </article>
-      ) : (
-        <section className="library-table" aria-label="Items guardados">
-          <div className="library-table__head" aria-hidden="true">
-            <span>Item</span>
-            <span>Tipo</span>
-            <span>Subio</span>
-            <span>Actualizado</span>
-            <span>Marca</span>
-          </div>
-
-          <div className="library-table__body">
-            {paginatedEntries.map((entry) => {
-              const rowMeta = getRowMeta(entry)
-              const uploaderLabel = getUploaderLabel(entry, user?.id)
-              const isChecked = entryMarksById[entry.id]?.isChecked ?? false
-
-              return (
-                <article className="library-row" key={entry.id}>
-                  <Link className="library-row__main" to={`/entries/${entry.id}`}>
-                    <div className="library-row__content">
-                      <h2>{entry.title}</h2>
-                      <p>{entry.summary || rowMeta || 'Sin descripcion todavia.'}</p>
-                    </div>
-
-                    <span className="library-row__type">
-                      {typeLabelMap[entry.type]}
-                    </span>
-
-                    <div className="library-row__uploader">
-                      <span>{uploaderLabel}</span>
-                    </div>
-
-                    <div className="library-row__side">
-                      <span>{formatDate(entry.updatedAt)}</span>
-                      {rowMeta ? <small>{rowMeta}</small> : null}
-                    </div>
-                  </Link>
-
-                  <div className="library-row__actions">
-                    <label className="entry-mark-toggle">
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        disabled={markingId === entry.id}
-                        onChange={() => {
-                          void handleToggleMark(entry)
-                        }}
-                      />
-                      <span>{isChecked ? 'Ya lo vi' : 'Marcar'}</span>
-                    </label>
-
-                    <button
-                      type="button"
-                      className="button--subtle-danger"
-                      disabled={deletingId === entry.id}
-                      onClick={() => {
-                        void handleDelete(entry)
-                      }}
-                    >
-                      {deletingId === entry.id ? 'Borrando...' : 'Borrar'}
-                    </button>
-                  </div>
-                </article>
-              )
-            })}
-          </div>
-
-          {totalPages > 1 ? (
-            <div className="pagination" aria-label="Paginacion de entradas">
-              <button
-                type="button"
-                className="button--ghost"
-                disabled={safeCurrentPage === 1}
-                onClick={() => {
-                  setCurrentPage((page) => Math.max(1, page - 1))
-                }}
-              >
-                Anterior
-              </button>
-
-              <span className="pagination__status">
-                Pagina {safeCurrentPage} de {totalPages} - {filteredEntries.length} entradas
-              </span>
-
-              <button
-                type="button"
-                className="button--ghost"
-                disabled={safeCurrentPage === totalPages}
-                onClick={() => {
-                  setCurrentPage((page) => Math.min(totalPages, page + 1))
-                }}
-              >
-                Siguiente
-              </button>
-            </div>
-          ) : null}
-        </section>
-      )}
 
       {user ? (
         <ShareEntriesModal

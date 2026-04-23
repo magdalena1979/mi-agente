@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom'
 
 import { analyzeEntry } from '@/features/ai/analyze-entry'
 import { useAuth } from '@/features/auth/auth-context'
+import { createUserCategory, listUserCategories, replaceEntryUserCategories } from '@/features/categories/categories-api'
+import { CreateUserCategoryModal } from '@/features/categories/components/CreateUserCategoryModal'
 import { EntryForm } from '@/features/entries/components/EntryForm'
 import { entryTypeOptions } from '@/features/entries/config/entry-type-config'
 import { createEntry, updateEntry } from '@/features/entries/entries-api'
@@ -14,8 +16,12 @@ import {
   parseTags,
   type EntryFormValues,
 } from '@/features/entries/entry-form-schema'
-import { createAnalysisImageDataUrl } from '@/features/entries/image-utils'
+import {
+  createAnalysisImageDataUrl,
+  getAnalysisImageResizeOptions,
+} from '@/features/entries/image-utils'
 import { extractTextFromImage } from '@/features/ocr/services/browser-ocr'
+import type { UserCategoryRecord } from '@/types/categories'
 import type { PendingUploadImage } from '@/types/entries'
 
 type OcrImageResult = {
@@ -177,6 +183,11 @@ export function NewEntryPage() {
   const [isPastingImage, setIsPastingImage] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isAnalysisReviewModalOpen, setIsAnalysisReviewModalOpen] = useState(false)
+  const [availableCategories, setAvailableCategories] = useState<UserCategoryRecord[]>([])
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([])
+  const [isCreateCategoryModalOpen, setIsCreateCategoryModalOpen] = useState(false)
+  const [isSavingCategory, setIsSavingCategory] = useState(false)
+  const [categoryErrorMessage, setCategoryErrorMessage] = useState<string | null>(null)
 
   const typeLabel = entryTypeLabelMap[formDefaults.type] ?? 'Entrada'
   const heroHighlights = useMemo(
@@ -202,6 +213,36 @@ export function NewEntryPage() {
   useEffect(() => {
     previewUrlsRef.current = pendingImages.map((image) => image.previewUrl)
   }, [pendingImages])
+
+  useEffect(() => {
+    let ignore = false
+
+    async function loadCategories() {
+      if (!user) {
+        return
+      }
+
+      try {
+        const nextCategories = await listUserCategories(user.id)
+
+        if (!ignore) {
+          setAvailableCategories(nextCategories)
+        }
+      } catch (error) {
+        if (!ignore) {
+          setCategoryErrorMessage(
+            getErrorMessage(error, 'No pudimos cargar tus subcategorias personales.'),
+          )
+        }
+      }
+    }
+
+    void loadCategories()
+
+    return () => {
+      ignore = true
+    }
+  }, [user])
 
   useEffect(() => {
     return () => {
@@ -416,6 +457,10 @@ export function NewEntryPage() {
     setAnalysisConfidence(null)
 
     const snapshot = [...pendingImages]
+    const imagesSelectedForAi = snapshot
+      .slice()
+      .sort((leftImage, rightImage) => leftImage.position - rightImage.position)
+      .slice(0, 1)
     const ocrTextByImage: OcrImageResult[] = []
     const imagesForAnalysis = []
 
@@ -446,24 +491,30 @@ export function NewEntryPage() {
         )
       }
 
-      try {
-        const dataUrl = await createAnalysisImageDataUrl(image.file)
-        imagesForAnalysis.push({
-          name: image.file.name,
-          type: image.file.type || 'image/jpeg',
-          position: image.position,
-          dataUrl,
-        })
-      } catch (error) {
-        if (!ocrErrorMessage) {
-          ocrErrorMessage = getErrorMessage(
-            error,
-            `No pudimos preparar ${image.file.name} para IA.`,
+      if (imagesSelectedForAi.some((selectedImage) => selectedImage.id === image.id)) {
+        try {
+          const dataUrl = await createAnalysisImageDataUrl(
+            image.file,
+            getAnalysisImageResizeOptions('low-cost'),
           )
-        }
 
-        if (!ocrText) {
-          ocrStatus = 'error'
+          imagesForAnalysis.push({
+            name: image.file.name,
+            type: image.file.type || 'image/jpeg',
+            position: image.position,
+            dataUrl,
+          })
+        } catch (error) {
+          if (!ocrErrorMessage) {
+            ocrErrorMessage = getErrorMessage(
+              error,
+              `No pudimos preparar ${image.file.name} para IA.`,
+            )
+          }
+
+          if (!ocrText) {
+            ocrStatus = 'error'
+          }
         }
       }
 
@@ -580,6 +631,12 @@ export function NewEntryPage() {
         await replaceEntryImages(entry.id, user.id, pendingImages)
       }
 
+      await replaceEntryUserCategories({
+        entryId: entry.id,
+        userId: user.id,
+        categoryIds: selectedCategoryIds,
+      })
+
       setSaveSuccessMessage('Entry guardada correctamente.')
       navigate(`/entries/${entry.id}`, { replace: true })
     } catch (error) {
@@ -597,6 +654,46 @@ export function NewEntryPage() {
       : null
   const canSubmitEntry = formDefaults.sourceType === 'link' || pendingImages.length > 0
   const canAnalyzeWithAi = pendingImages.length > 0 && analysisRunCount < 2
+
+  function handleToggleCategory(categoryId: string) {
+    setSelectedCategoryIds((currentIds) =>
+      currentIds.includes(categoryId)
+        ? currentIds.filter((currentId) => currentId !== categoryId)
+        : [...currentIds, categoryId],
+    )
+  }
+
+  async function handleCreateCategory(name: string) {
+    if (!user) {
+      return
+    }
+
+    setIsSavingCategory(true)
+    setCategoryErrorMessage(null)
+
+    try {
+      const nextCategory = await createUserCategory({
+        userId: user.id,
+        name,
+      })
+
+      setAvailableCategories((currentCategories) =>
+        [...currentCategories, nextCategory].sort((leftCategory, rightCategory) =>
+          leftCategory.name.localeCompare(rightCategory.name),
+        ),
+      )
+      setSelectedCategoryIds((currentIds) =>
+        currentIds.includes(nextCategory.id) ? currentIds : [...currentIds, nextCategory.id],
+      )
+      setIsCreateCategoryModalOpen(false)
+    } catch (error) {
+      setCategoryErrorMessage(
+        getErrorMessage(error, 'No pudimos guardar esta subcategoria personal.'),
+      )
+    } finally {
+      setIsSavingCategory(false)
+    }
+  }
 
   function handleOpenReviewStep() {
     setIsAnalysisReviewModalOpen(false)
@@ -637,6 +734,17 @@ export function NewEntryPage() {
 
   return (
     <section className="page page--detail">
+      <CreateUserCategoryModal
+        isOpen={isCreateCategoryModalOpen}
+        isSubmitting={isSavingCategory}
+        errorMessage={categoryErrorMessage}
+        onClose={() => {
+          setIsCreateCategoryModalOpen(false)
+          setCategoryErrorMessage(null)
+        }}
+        onSubmit={handleCreateCategory}
+      />
+
       {isAnalysisReviewModalOpen ? (
         <div className="modal-backdrop" role="presentation">
           <div
@@ -923,6 +1031,13 @@ export function NewEntryPage() {
           showActions={false}
           errorMessage={saveErrorMessage}
           successMessage={saveSuccessMessage}
+          availableCategories={availableCategories}
+          selectedCategoryIds={selectedCategoryIds}
+          onToggleCategory={handleToggleCategory}
+          onOpenCreateCategory={() => {
+            setCategoryErrorMessage(null)
+            setIsCreateCategoryModalOpen(true)
+          }}
           onSubmit={handleSave}
         />
       </article>
