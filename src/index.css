@@ -374,6 +374,10 @@ button {
   margin-top: 0.1rem;
 }
 
+.auth-card__header {
+  margin-bottom: 0.7rem;
+}
+
 .auth-card--story {
   padding-bottom: 0.9rem;
   background:
@@ -1192,6 +1196,37 @@ button {
   min-height: 2.7rem;
 }
 
+.auth-form__footer {
+  padding-top: 0.15rem;
+}
+
+.auth-form__switch-copy {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.auth-inline-link {
+  display: inline;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #9cdcfe;
+  font-size: inherit;
+  font-weight: 700;
+  line-height: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+}
+
+.auth-inline-link:hover {
+  color: #ffffff;
+  transform: none;
+}
+
 .field-grid,
 .card-grid,
 .analysis-summary,
@@ -1263,6 +1298,122 @@ button {
 .new-entry-link-actions {
   display: flex;
   align-items: end;
+}
+
+.page--new-entry {
+  gap: 0.95rem;
+}
+
+.new-entry-step-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.new-entry-step-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.8rem 0.9rem;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.new-entry-step-badge span {
+  width: 1.9rem;
+  height: 1.9rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.new-entry-step-badge strong {
+  color: var(--text-soft);
+  font-size: 0.86rem;
+  line-height: 1.15;
+}
+
+.new-entry-step-badge--active {
+  background: rgba(79, 193, 255, 0.08);
+  border-color: rgba(79, 193, 255, 0.16);
+}
+
+.new-entry-step-badge--active span,
+.new-entry-step-badge--done span {
+  background: rgba(0, 122, 204, 0.16);
+  color: var(--highlight);
+}
+
+.new-entry-step-badge--active strong,
+.new-entry-step-badge--done strong {
+  color: #ffffff;
+}
+
+.new-entry-step-badge--done {
+  background: rgba(78, 201, 176, 0.08);
+  border-color: rgba(78, 201, 176, 0.16);
+}
+
+.new-entry-step-badge--done span {
+  color: var(--success);
+  background: rgba(78, 201, 176, 0.14);
+}
+
+.new-entry-step-badge:disabled {
+  opacity: 0.68;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.new-entry-step-card {
+  display: grid;
+  gap: 0.95rem;
+}
+
+.new-entry-step-card__header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+}
+
+.new-entry-analysis-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.new-entry-review-card {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top left, rgba(79, 193, 255, 0.1), transparent 35%),
+    rgba(21, 25, 32, 0.78);
+  border: 1px solid rgba(79, 193, 255, 0.14);
+}
+
+.new-entry-review-card__copy {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.new-entry-step-card__footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
 .capture-card {
@@ -1526,6 +1677,10 @@ button {
 
   .capture-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .new-entry-step-list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .capture-grid--compact {

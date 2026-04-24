@@ -33,6 +33,7 @@ type OcrImageResult = {
 }
 
 const MAX_ENTRY_CAPTURES = 2
+type NewEntryStep = 1 | 2 | 3 | 4
 const entryTypeLabelMap = entryTypeOptions.reduce<Record<string, string>>(
   (labels, option) => {
     labels[option.type] = option.label
@@ -157,7 +158,6 @@ export function NewEntryPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const inputRef = useRef<HTMLInputElement | null>(null)
-  const formSectionRef = useRef<HTMLElement | null>(null)
   const previewUrlsRef = useRef<string[]>([])
   const [linkInput, setLinkInput] = useState('')
 
@@ -182,7 +182,7 @@ export function NewEntryPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [isPastingImage, setIsPastingImage] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isAnalysisReviewModalOpen, setIsAnalysisReviewModalOpen] = useState(false)
+  const [activeStep, setActiveStep] = useState<NewEntryStep>(1)
   const [availableCategories, setAvailableCategories] = useState<UserCategoryRecord[]>([])
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([])
   const [isCreateCategoryModalOpen, setIsCreateCategoryModalOpen] = useState(false)
@@ -195,6 +195,14 @@ export function NewEntryPage() {
     [analysisConfidence, formDefaults, pendingImages],
   )
   const heroTags = useMemo(() => parseTags(formDefaults.tagsText), [formDefaults.tagsText])
+  const hasPreparedLink =
+    formDefaults.sourceType === 'link' && formDefaults.sourceUrl.trim().length > 0
+  const hasSourceReady = pendingImages.length > 0 || hasPreparedLink
+  const hasAnalysisResult = analysisRunCount > 0
+  const hasReviewContent =
+    hasSourceReady ||
+    formDefaults.title.trim().length > 0 ||
+    formDefaults.summary.trim().length > 0
   const heroTitle =
     formDefaults.title.trim() ||
     (formDefaults.sourceType === 'link'
@@ -209,10 +217,34 @@ export function NewEntryPage() {
       : pendingImages.length > 0
         ? 'Subi hasta dos capturas, corre la IA y revisa la ficha antes de guardarla.'
         : 'Subi capturas o usa un link y arma una ficha con el mismo estilo visual del detalle.')
+  const canAccessStep2 = hasSourceReady
+  const canAccessStep3 = hasSourceReady || hasAnalysisResult
+  const canAccessStep4 = hasReviewContent
 
   useEffect(() => {
     previewUrlsRef.current = pendingImages.map((image) => image.previewUrl)
   }, [pendingImages])
+
+  useEffect(() => {
+    if (!hasSourceReady && activeStep !== 1) {
+      setActiveStep(1)
+      return
+    }
+
+    if (activeStep === 2 && !canAccessStep2) {
+      setActiveStep(1)
+      return
+    }
+
+    if (activeStep === 3 && !canAccessStep3) {
+      setActiveStep(canAccessStep2 ? 2 : 1)
+      return
+    }
+
+    if (activeStep === 4 && !canAccessStep4) {
+      setActiveStep(canAccessStep3 ? 3 : canAccessStep2 ? 2 : 1)
+    }
+  }, [activeStep, canAccessStep2, canAccessStep3, canAccessStep4, hasSourceReady])
 
   useEffect(() => {
     let ignore = false
@@ -262,7 +294,6 @@ export function NewEntryPage() {
     setLinkSuccessMessage(null)
     setSaveErrorMessage(null)
     setSaveSuccessMessage(null)
-    setIsAnalysisReviewModalOpen(false)
     setFormDefaults(
       createEmptyEntryFormValues({
         sourceType: 'screenshot',
@@ -305,10 +336,7 @@ export function NewEntryPage() {
     )
 
     requestAnimationFrame(() => {
-      formSectionRef.current?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      })
+      setActiveStep(2)
     })
   }
 
@@ -349,6 +377,7 @@ export function NewEntryPage() {
     })
 
     resetAnalysisState()
+    setActiveStep(2)
   }
 
   async function handlePasteImageFromClipboard() {
@@ -436,6 +465,10 @@ export function NewEntryPage() {
     })
 
     resetAnalysisState()
+
+    if (pendingImages.length <= 1) {
+      setActiveStep(1)
+    }
   }
 
   async function handleAnalyze() {
@@ -565,7 +598,7 @@ export function NewEntryPage() {
       setAnalysisDetectedType(analysis.detectedType)
       setAnalysisConfidence(analysis.confidence)
       setAnalysisRunCount((currentCount) => currentCount + 1)
-      setIsAnalysisReviewModalOpen(true)
+      setActiveStep(3)
     } catch (error) {
       setAnalysisErrorMessage(
         getErrorMessage(
@@ -654,6 +687,37 @@ export function NewEntryPage() {
       : null
   const canSubmitEntry = formDefaults.sourceType === 'link' || pendingImages.length > 0
   const canAnalyzeWithAi = pendingImages.length > 0 && analysisRunCount < 2
+  const stepItems: Array<{
+    step: NewEntryStep
+    title: string
+    state: 'idle' | 'active' | 'done'
+    disabled: boolean
+  }> = [
+    {
+      step: 1,
+      title: 'Carga',
+      state: activeStep === 1 ? 'active' : hasSourceReady ? 'done' : 'idle',
+      disabled: false,
+    },
+    {
+      step: 2,
+      title: 'IA',
+      state: activeStep === 2 ? 'active' : hasAnalysisResult ? 'done' : canAccessStep2 ? 'idle' : 'idle',
+      disabled: !canAccessStep2,
+    },
+    {
+      step: 3,
+      title: 'Revisa',
+      state: activeStep === 3 ? 'active' : activeStep > 3 ? 'done' : canAccessStep3 ? 'idle' : 'idle',
+      disabled: !canAccessStep3,
+    },
+    {
+      step: 4,
+      title: 'Guarda',
+      state: activeStep === 4 ? 'active' : canAccessStep4 && isSubmitting ? 'done' : canAccessStep4 ? 'idle' : 'idle',
+      disabled: !canAccessStep4,
+    },
+  ]
 
   function handleToggleCategory(categoryId: string) {
     setSelectedCategoryIds((currentIds) =>
@@ -695,16 +759,6 @@ export function NewEntryPage() {
     }
   }
 
-  function handleOpenReviewStep() {
-    setIsAnalysisReviewModalOpen(false)
-    requestAnimationFrame(() => {
-      formSectionRef.current?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      })
-    })
-  }
-
   useEffect(() => {
     function handlePaste(event: ClipboardEvent) {
       const imageFiles = Array.from(event.clipboardData?.items ?? [])
@@ -723,6 +777,7 @@ export function NewEntryPage() {
           ? 'Imagen pegada. Ahora podes analizarla.'
           : `${imageFiles.length} imagenes pegadas. Ahora podes analizarlas.`,
       )
+      setActiveStep(2)
     }
 
     window.addEventListener('paste', handlePaste)
@@ -733,7 +788,7 @@ export function NewEntryPage() {
   }, [pendingImages.length])
 
   return (
-    <section className="page page--detail">
+    <section className="page page--detail page--new-entry">
       <CreateUserCategoryModal
         isOpen={isCreateCategoryModalOpen}
         isSubmitting={isSavingCategory}
@@ -745,41 +800,6 @@ export function NewEntryPage() {
         onSubmit={handleCreateCategory}
       />
 
-      {isAnalysisReviewModalOpen ? (
-        <div className="modal-backdrop" role="presentation">
-          <div
-            className="modal-card"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="analysis-review-title"
-          >
-            <div className="section-title">
-              <h2 id="analysis-review-title">La IA termino el analisis</h2>
-              <p>Chequea la info, editala si hace falta y despues guarda los cambios.</p>
-            </div>
-
-            <div className="entry-form__actions">
-              <button
-                type="button"
-                className="button"
-                onClick={handleOpenReviewStep}
-              >
-                Revisar y editar
-              </button>
-              <button
-                type="button"
-                className="button--ghost"
-                onClick={() => {
-                  setIsAnalysisReviewModalOpen(false)
-                }}
-              >
-                Cerrar
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       <div className="detail-back-row">
         <Link className="detail-back-link" to="/">
           <span aria-hidden="true">&#8592;</span>
@@ -787,136 +807,41 @@ export function NewEntryPage() {
         </Link>
       </div>
 
-      <article className="detail-hero detail-hero--new-entry">
-        {pendingImages[0]?.previewUrl ? (
-          <div className="detail-hero__media">
-            <img
-              src={pendingImages[0].previewUrl}
-              alt={`Captura ${pendingImages[0].position + 1}`}
-              className="detail-hero__image"
-            />
-          </div>
-        ) : (
-          <div className="detail-hero__media detail-hero__media--placeholder">
-            <div className="new-entry-placeholder">
-              <strong>{formDefaults.sourceType === 'link' ? 'Link cargado' : 'Nueva entry'}</strong>
-              <span>
-                {formDefaults.sourceType === 'link'
-                  ? 'Completa la ficha, revisa los datos y guardala.'
-                  : 'Subi hasta dos capturas o pega un link para empezar.'}
-              </span>
-            </div>
-          </div>
-        )}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="sr-only"
+        onChange={handleFilesSelected}
+      />
 
-        <div className="detail-hero__content">
-          <div className="detail-hero__toprow">
-          <div className="detail-hero__eyebrow">
-              <span className="entry-card__type">
-                {analysisDetectedType ? entryTypeLabelMap[analysisDetectedType] : typeLabel}
-              </span>
-              <span className="detail-chip">{formatSourceTypeLabel(formDefaults.sourceType)}</span>
-              {combinedExtractedText ? <span className="detail-chip">OCR listo</span> : null}
-              {formDefaults.sourceName ? (
-                <span className="detail-chip">{formDefaults.sourceName}</span>
-              ) : null}
-            </div>
+      <section className="new-entry-step-list" aria-label="Pasos para crear una entrada">
+        {stepItems.map((step) => (
+          <button
+            key={step.step}
+            type="button"
+            className={`new-entry-step-badge new-entry-step-badge--${step.state}`}
+            disabled={step.disabled}
+            onClick={() => {
+              if (!step.disabled) {
+                setActiveStep(step.step)
+              }
+            }}
+          >
+            <span>{step.step}</span>
+            <strong>{step.title}</strong>
+          </button>
+        ))}
+      </section>
 
-            <div className="detail-hero__top-actions">
-              <input
-                ref={inputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="sr-only"
-                onChange={handleFilesSelected}
-              />
-              <button
-                type="button"
-                className="button--ghost"
-                disabled={pendingImages.length >= MAX_ENTRY_CAPTURES}
-                onClick={() => {
-                  inputRef.current?.click()
-                }}
-              >
-                Elegir imagenes
-              </button>
-              <button
-                type="submit"
-                form="entry-new-form"
-                className="button"
-                disabled={isSubmitting || !canSubmitEntry}
-              >
-                {isSubmitting ? 'Guardando...' : 'Guardar en tu archivo'}
-              </button>
-            </div>
-          </div>
-
-          <div className="detail-hero__inline-actions">
-            <button
-              type="button"
-              className="button"
-              disabled={!canAnalyzeWithAi || isAnalyzing}
-              onClick={() => {
-                void handleAnalyze()
-              }}
-            >
-              {isAnalyzing
-                ? 'Analizando...'
-                : analysisRunCount >= 2
-                  ? 'Limite de IA alcanzado'
-                  : 'Analizar con IA'}
-            </button>
-            <button
-              type="button"
-              className="button--ghost"
-              disabled={isPastingImage || pendingImages.length >= MAX_ENTRY_CAPTURES}
-              onClick={() => {
-                void handlePasteImageFromClipboard()
-              }}
-            >
-              {isPastingImage ? 'Pegando...' : 'Pegar imagen'}
-            </button>
-            <span className="muted">{analysisRunCount}/2 analisis usados</span>
-          </div>
-
-          <h1>{heroTitle}</h1>
-          {formDefaults.sourceName ? (
-            <p className="detail-hero__source">Visto en {formDefaults.sourceName}</p>
-          ) : null}
-          <p className="detail-hero__summary">{heroSummary}</p>
-
-          {heroHighlights.length > 0 ? (
-            <div className="detail-highlight-grid">
-              {heroHighlights.map((fact) => (
-                <article
-                  key={`${fact.label}-${fact.value}`}
-                  className="detail-highlight-card"
-                >
-                  <span>{fact.label}</span>
-                  <strong>{fact.value}</strong>
-                </article>
-              ))}
-            </div>
-          ) : null}
-
-          {heroTags.length > 0 ? (
-            <div className="detail-tag-row">
-              {heroTags.map((tag) => (
-                <span key={tag} className="detail-chip">
-                  {tag}
-                </span>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      </article>
-
-      <article className="card">
-        <div className="detail-card-header">
+      {activeStep === 1 ? (
+      <article className="card new-entry-step-card">
+        <div className="new-entry-step-card__header">
           <div className="section-title">
-            <h2>Carga capturas o link</h2>
-            <p>Podes usar hasta dos capturas de la misma cosa o pegar un link para armar esta ficha.</p>
+            <span className="eyebrow">Paso 1</span>
+            <h2>Carga una captura o un link</h2>
+            <p>Es lo primero que va a hacer el usuario: subir una imagen o pegar un link para empezar.</p>
           </div>
 
           <p className="muted new-entry-counts">
@@ -927,7 +852,7 @@ export function NewEntryPage() {
         <div className="new-entry-toolbar">
           <button
             type="button"
-            className="button--ghost"
+            className="button"
             disabled={pendingImages.length >= MAX_ENTRY_CAPTURES}
             onClick={() => {
               inputRef.current?.click()
@@ -975,9 +900,6 @@ export function NewEntryPage() {
           </div>
         </div>
 
-        {analysisErrorMessage ? (
-          <p className="feedback feedback--error">{analysisErrorMessage}</p>
-        ) : null}
         {linkSuccessMessage ? (
           <p className="feedback feedback--success">{linkSuccessMessage}</p>
         ) : null}
@@ -1012,12 +934,182 @@ export function NewEntryPage() {
             ))}
           </div>
         )}
+        <div className="new-entry-step-card__footer">
+          <button
+            type="button"
+            className="button"
+            disabled={!hasSourceReady}
+            onClick={() => {
+              setActiveStep(2)
+            }}
+          >
+            Seguir
+          </button>
+        </div>
       </article>
+      ) : null}
 
-      <article className="card" ref={formSectionRef}>
+      {activeStep === 2 ? (
+      <article className="card new-entry-step-card">
+        <div className="new-entry-step-card__header">
+          <div className="section-title">
+            <span className="eyebrow">Paso 2</span>
+            <h2>Corre la IA</h2>
+            <p>Cuando ya cargaste la captura, corre el análisis para que complete la ficha por vos.</p>
+          </div>
+
+          <span className="muted">{analysisRunCount}/2 analisis usados</span>
+        </div>
+
+        <div className="new-entry-analysis-actions">
+          <button
+            type="button"
+            className="button"
+            disabled={!canAnalyzeWithAi || isAnalyzing}
+            onClick={() => {
+              void handleAnalyze()
+            }}
+          >
+            {isAnalyzing
+              ? 'Analizando...'
+              : analysisRunCount >= 2
+                ? 'Limite de IA alcanzado'
+                : 'Analizar con IA'}
+          </button>
+
+          {!pendingImages.length && hasPreparedLink ? (
+            <p className="muted">
+              Si cargaste solo un link, por ahora completa la ficha manualmente abajo.
+            </p>
+          ) : null}
+        </div>
+
+        {analysisErrorMessage ? (
+          <p className="feedback feedback--error">{analysisErrorMessage}</p>
+        ) : null}
+        <div className="new-entry-step-card__footer">
+          <button
+            type="button"
+            className="button--ghost"
+            onClick={() => {
+              setActiveStep(1)
+            }}
+          >
+            Volver
+          </button>
+          <button
+            type="button"
+            className="button"
+            disabled={!hasPreparedLink && !hasAnalysisResult}
+            onClick={() => {
+              setActiveStep(3)
+            }}
+          >
+            {hasPreparedLink && !pendingImages.length ? 'Seguir sin IA' : 'Seguir'}
+          </button>
+        </div>
+      </article>
+      ) : null}
+
+      {activeStep === 3 ? (
+      <article className="card new-entry-step-card">
         <div className="section-title">
-          <h2>Editar item</h2>
-          <p>La IA sugiere, vos revisas. Ajusta lo que haga falta y despues guardalo.</p>
+          <span className="eyebrow">Paso 3</span>
+          <h2>Chequea lo que encontro</h2>
+          <p>Antes de guardar, deja bien visible lo que la IA completo o lo que ya quedo listo para revisar.</p>
+        </div>
+
+        {hasReviewContent ? (
+          <div className="new-entry-review-card">
+            <div className="detail-hero__eyebrow">
+              <span className="entry-card__type">
+                {analysisDetectedType ? entryTypeLabelMap[analysisDetectedType] : typeLabel}
+              </span>
+              <span className="detail-chip">{formatSourceTypeLabel(formDefaults.sourceType)}</span>
+              {combinedExtractedText ? <span className="detail-chip">OCR listo</span> : null}
+              {formDefaults.sourceName ? (
+                <span className="detail-chip">{formDefaults.sourceName}</span>
+              ) : null}
+            </div>
+
+            <div className="new-entry-review-card__copy">
+              <h1>{heroTitle}</h1>
+              {formDefaults.sourceName ? (
+                <p className="detail-hero__source">Fuente detectada: {formDefaults.sourceName}</p>
+              ) : null}
+              <p className="detail-hero__summary">{heroSummary}</p>
+            </div>
+
+            {heroHighlights.length > 0 ? (
+              <div className="detail-highlight-grid">
+                {heroHighlights.map((fact) => (
+                  <article
+                    key={`${fact.label}-${fact.value}`}
+                    className="detail-highlight-card"
+                  >
+                    <span>{fact.label}</span>
+                    <strong>{fact.value}</strong>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+
+            {heroTags.length > 0 ? (
+              <div className="detail-tag-row">
+                {heroTags.map((tag) => (
+                  <span key={tag} className="detail-chip">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <p className="muted">
+            Cuando cargues una captura y corras la IA, aca vas a ver el resumen, el tipo y los datos que ya encontro.
+          </p>
+        )}
+        <div className="new-entry-step-card__footer">
+          <button
+            type="button"
+            className="button--ghost"
+            onClick={() => {
+              setActiveStep(2)
+            }}
+          >
+            Volver
+          </button>
+          <button
+            type="button"
+            className="button"
+            disabled={!hasReviewContent}
+            onClick={() => {
+              setActiveStep(4)
+            }}
+          >
+            Editar y guardar
+          </button>
+        </div>
+      </article>
+      ) : null}
+
+      {activeStep === 4 ? (
+      <article className="card new-entry-step-card">
+        <div className="new-entry-step-card__header">
+          <div className="section-title">
+            <span className="eyebrow">Paso 4</span>
+            <h2>Ajusta y guarda</h2>
+            <p>Si hace falta, corrige la ficha y despues guardala en tu archivo.</p>
+          </div>
+
+          <button
+            type="submit"
+            form="entry-new-form"
+            className="button"
+            disabled={isSubmitting || !canSubmitEntry}
+          >
+            {isSubmitting ? 'Guardando...' : 'Guardar en tu archivo'}
+          </button>
         </div>
 
         <EntryForm
@@ -1040,7 +1132,19 @@ export function NewEntryPage() {
           }}
           onSubmit={handleSave}
         />
+        <div className="new-entry-step-card__footer">
+          <button
+            type="button"
+            className="button--ghost"
+            onClick={() => {
+              setActiveStep(3)
+            }}
+          >
+            Volver
+          </button>
+        </div>
       </article>
+      ) : null}
     </section>
   )
 }

@@ -182,29 +182,13 @@ export function AuthPage() {
 
       <div className="card-grid card-grid--two">
         <article className="card auth-card auth-card--form">
-          <div className="auth-toggle" role="tablist" aria-label="Modo de acceso">
-            <button
-              type="button"
-              className={mode === authModes.signIn ? 'auth-toggle__item auth-toggle__item--active' : 'auth-toggle__item'}
-              onClick={() => {
-                setMode(authModes.signIn)
-                setFeedback(null)
-                setErrorMessage(null)
-              }}
-            >
-              Iniciar sesion
-            </button>
-            <button
-              type="button"
-              className={mode === authModes.signUp ? 'auth-toggle__item auth-toggle__item--active' : 'auth-toggle__item'}
-              onClick={() => {
-                setMode(authModes.signUp)
-                setFeedback(null)
-                setErrorMessage(null)
-              }}
-            >
-              Crear cuenta
-            </button>
+          <div className="section-title auth-card__header">
+            <h2>{mode === authModes.signIn ? 'Iniciar sesion' : 'Crear cuenta'}</h2>
+            <p>
+              {mode === authModes.signIn
+                ? 'Entra a tu archivo y retoma tus capturas, links y hallazgos.'
+                : 'Abre tu cuenta y arma tu archivo personal para guardar y compartir lo que te interesa.'}
+            </p>
           </div>
 
           <form className="auth-form" onSubmit={form.handleSubmit(onSubmit)}>
@@ -285,6 +269,40 @@ export function AuthPage() {
                   {isRecoveringPassword ? 'Enviando...' : 'Olvide mi contrasena'}
                 </button>
               ) : null}
+            </div>
+
+            <div className="auth-form__footer">
+              {mode === authModes.signIn ? (
+                <p className="auth-form__switch-copy">
+                  No tenes cuenta?{' '}
+                  <button
+                    type="button"
+                    className="auth-inline-link"
+                    onClick={() => {
+                      setMode(authModes.signUp)
+                      setFeedback(null)
+                      setErrorMessage(null)
+                    }}
+                  >
+                    Registrate y empeza a tener las cosas que te interesan ordenadas.
+                  </button>
+                </p>
+              ) : (
+                <p className="auth-form__switch-copy">
+                  Ya tenes cuenta?{' '}
+                  <button
+                    type="button"
+                    className="auth-inline-link"
+                    onClick={() => {
+                      setMode(authModes.signIn)
+                      setFeedback(null)
+                      setErrorMessage(null)
+                    }}
+                  >
+                    Inicia sesion.
+                  </button>
+                </p>
+              )}
             </div>
           </form>
         </article>

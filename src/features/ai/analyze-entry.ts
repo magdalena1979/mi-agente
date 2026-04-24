@@ -6,6 +6,7 @@ import {
 
 type ErrorResponse = {
   error?: string
+  requestId?: string
 }
 
 export async function analyzeEntry(input: AnalyzeEntryRequest) {
@@ -24,15 +25,24 @@ export async function analyzeEntry(input: AnalyzeEntryRequest) {
     | unknown
 
   if (!response.ok) {
+    const requestId =
+      data &&
+      typeof data === 'object' &&
+      'requestId' in data &&
+      typeof data.requestId === 'string'
+        ? data.requestId
+        : response.headers.get('x-request-id')
     const message =
       data &&
       typeof data === 'object' &&
       'error' in data &&
       typeof data.error === 'string'
         ? data.error
-        : 'No pudimos analizar las capturas con IA.'
+        : response.status >= 500
+          ? 'No pudimos analizar las capturas desde el servidor. Si estas en mobile, prueba con una captura mas simple o mas recortada.'
+          : 'No pudimos analizar las capturas con IA.'
 
-    throw new Error(message)
+    throw new Error(requestId ? `${message} (ref: ${requestId})` : message)
   }
 
   return normalizeAiAnalysis(data)

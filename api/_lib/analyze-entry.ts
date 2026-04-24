@@ -7,6 +7,78 @@ import {
 } from '../../src/features/ai/schemas'
 
 const MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'
+const SUPPORTED_IMAGE_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+])
+
+export class AnalyzeEntryValidationError extends Error {}
+export class AnalyzeEntryUpstreamError extends Error {}
+
+function estimateDataUrlBytes(dataUrl: string) {
+  const [, base64Payload = ''] = dataUrl.split(',', 2)
+  return Math.ceil((base64Payload.length * 3) / 4)
+}
+
+function getImageMimeTypeFromDataUrl(dataUrl: string) {
+  const mimeMatch = dataUrl.match(/^data:(image\/[a-z0-9.+-]+);base64,/i)
+  return mimeMatch?.[1]?.toLowerCase() ?? ''
+}
+
+function validatePayloadForAi(payload: AnalyzeEntryRequest) {
+  if (payload.images.length === 0) {
+    throw new AnalyzeEntryValidationError(
+      'Necesitamos al menos una captura valida para correr la IA.',
+    )
+  }
+
+  payload.images.forEach((image, index) => {
+    const mimeType = getImageMimeTypeFromDataUrl(image.dataUrl)
+    const estimatedBytes = estimateDataUrlBytes(image.dataUrl)
+
+    if (!mimeType || !SUPPORTED_IMAGE_MIME_TYPES.has(mimeType)) {
+      throw new AnalyzeEntryValidationError(
+        `La captura ${index + 1} no tiene un formato compatible para IA.`,
+      )
+    }
+
+    if (!Number.isFinite(estimatedBytes) || estimatedBytes <= 0) {
+      throw new AnalyzeEntryValidationError(
+        `La captura ${index + 1} llego vacia o invalida.`,
+      )
+    }
+
+    if (estimatedBytes > 900_000) {
+      throw new AnalyzeEntryValidationError(
+        `La captura ${index + 1} sigue siendo demasiado pesada para analizar. Prueba con una imagen mas simple o recortada.`,
+      )
+    }
+  })
+}
+
+export function getAnalyzePayloadDebugSummary(rawPayload: unknown) {
+  try {
+    const payload = normalizeAnalyzeEntryRequest(rawPayload)
+
+    return {
+      imagesCount: payload.images.length,
+      imageDiagnostics: payload.images.map((image) => ({
+        name: image.name,
+        position: image.position,
+        mimeType: getImageMimeTypeFromDataUrl(image.dataUrl),
+        estimatedBytes: estimateDataUrlBytes(image.dataUrl),
+      })),
+      combinedExtractedTextLength: payload.combinedExtractedText.length,
+      ocrItems: payload.ocrTextByImage.length,
+      ocrStatuses: payload.ocrTextByImage.map((item) => item.status),
+    }
+  } catch {
+    return {
+      invalidPayload: true,
+    }
+  }
+}
 
 function buildPrompt(payload: AnalyzeEntryRequest) {
   const ocrByImage = payload.ocrTextByImage
@@ -44,16 +116,20 @@ function buildPrompt(payload: AnalyzeEntryRequest) {
     '- If the screenshot includes director information, copy it into fields.director.',
     '- You may use well-known prior knowledge to enrich missing movie/series details only when the title match is very clear and consistent with the screenshot. If unsure, leave the field empty.',
     '- For clearly identified movies or series, enrich the result with useful known facts when confidence is high: genre, year, duration, country/cinematic context in fields.note, notable cast, director, or likely platform only if you are confident.',
+    '- For clearly identified books, enrich the result with useful known facts when confidence is high: brief context about the book, its premise, the author, genre, or why it is notable.',
     '- For clearly identified books, articles or places, you may also add one short useful contextual note in fields.note when it is reliable and helps the user remember why it matters.',
     '- Do not invent facts. Only enrich when the match is strong and the extra data is likely correct.',
     'Output rules:',
     '- title and summary must be in Spanish.',
     '- sourceName should capture the visible source/platform when useful, especially for social screenshots and links.',
+    '- sourceName is metadata only. Do not make the summary revolve around the Instagram account, TikTok profile, newsletter sender or person who posted it unless that person is the actual subject of the entry.',
     '- summary should be a short but useful paragraph for the user, not just a plain label.',
     '- summary should ideally have 2 or 3 complete sentences in one paragraph.',
-    '- The first sentence should confirm what the item is.',
+    '- The first sentence should confirm what the item is and focus on the item itself, not on who uploaded or recommended it.',
     '- The second sentence should add a useful plus: context, why it is notable, a reliable extra fact, or a short researched clue that helps the user remember it better.',
-    '- If the item is a book and the author is clearly identified, the summary may include a brief useful context line about the writer or why the book matters.',
+    '- Never use the summary just to say that an Instagram user recommended or posted the item. That information belongs in sourceName, not in the core summary.',
+    '- If the item is a book and the author is clearly identified, the summary should prioritize describing the book, its premise, tone, theme, or a brief useful context about the writer.',
+    '- If the item is a book, prefer 2 or 3 full sentences that leave the user with a better idea of what the book is about or why it may be worth remembering.',
     '- If the item is a movie or series, summary should ideally mention genero, director, year, plataforma or cultural context when available.',
     '- If the item is an article, place, trip, plant or garden entry, summary should mention the main angle plus one extra helpful detail when reliable.',
     '- If you cannot enrich confidently, still write a helpful paragraph, but do not invent facts.',
@@ -82,46 +158,57 @@ export async function analyzeEntryPayload(
   }
 
   const payload = normalizeAnalyzeEntryRequest(rawPayload)
+  validatePayloadForAi(payload)
   const client = new Groq({
     apiKey,
     maxRetries: 1,
     timeout: 30000,
   })
 
-  const completion = await client.chat.completions.create({
-    model: MODEL,
-    temperature: 0.2,
-    response_format: {
-      type: 'json_object',
-    },
-    messages: [
-      {
-        role: 'system',
-        content:
-          'You extract structured personal catalog entries from screenshots. Reply with strict JSON only and never include markdown fences or explanations.',
-      },
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'text',
-            text: buildPrompt(payload),
-          },
-          ...payload.images.map((image) => ({
-            type: 'image_url' as const,
-            image_url: {
-              url: image.dataUrl,
-            },
-          })),
-        ],
-      },
-    ],
-  })
+  let content: unknown
 
-  const content = completion.choices[0]?.message?.content
+  try {
+    const completion = await client.chat.completions.create({
+      model: MODEL,
+      temperature: 0.2,
+      response_format: {
+        type: 'json_object',
+      },
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You extract structured personal catalog entries from screenshots. Reply with strict JSON only and never include markdown fences or explanations.',
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: buildPrompt(payload),
+            },
+            ...payload.images.map((image) => ({
+              type: 'image_url' as const,
+              image_url: {
+                url: image.dataUrl,
+              },
+            })),
+          ],
+        },
+      ],
+    })
+
+    content = completion.choices[0]?.message?.content
+  } catch (error) {
+    throw new AnalyzeEntryUpstreamError(
+      error instanceof Error
+        ? `La IA no pudo procesar esta captura. ${error.message}`
+        : 'La IA no pudo procesar esta captura.',
+    )
+  }
 
   if (typeof content !== 'string') {
-    throw new Error('Groq no devolvio contenido JSON utilizable.')
+    throw new AnalyzeEntryUpstreamError('La IA no devolvio contenido utilizable.')
   }
 
   let parsedContent: unknown
@@ -129,7 +216,9 @@ export async function analyzeEntryPayload(
   try {
     parsedContent = JSON.parse(content)
   } catch {
-    throw new Error('Groq devolvio un JSON invalido para esta entrada.')
+    throw new AnalyzeEntryUpstreamError(
+      'La IA devolvio una respuesta invalida para esta entrada.',
+    )
   }
 
   return normalizeAiAnalysis(parsedContent)

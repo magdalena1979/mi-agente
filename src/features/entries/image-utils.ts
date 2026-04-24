@@ -82,26 +82,26 @@ export async function createAnalysisImageDataUrl(
 
     if (
       estimatedBytes <= maxBytes ||
-      (currentMaxSide <= 640 && currentQuality <= 0.5)
+      (currentMaxSide <= 560 && currentQuality <= 0.46)
     ) {
       return dataUrl
     }
 
-    if (currentQuality > 0.52) {
-      currentQuality = Math.max(0.52, Number((currentQuality - 0.08).toFixed(2)))
+    if (currentQuality > 0.46) {
+      currentQuality = Math.max(0.46, Number((currentQuality - 0.08).toFixed(2)))
       continue
     }
 
-    currentMaxSide = Math.max(640, Math.round(currentMaxSide * 0.8))
+    currentMaxSide = Math.max(560, Math.round(currentMaxSide * 0.8))
   }
 }
 
 export function getAnalysisImageResizeOptions(mode: AnalysisImageMode = 'default') {
   if (mode === 'low-cost') {
     return {
-      maxSide: 820,
-      quality: 0.6,
-      maxBytes: 380_000,
+      maxSide: 720,
+      quality: 0.56,
+      maxBytes: 240_000,
     } satisfies ResizeOptions
   }
 

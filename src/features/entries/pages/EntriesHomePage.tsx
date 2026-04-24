@@ -29,6 +29,7 @@ import type { InvitationRecord } from '@/types/lists'
 type HomeDesktopTab = 'entries' | 'sharing'
 
 const PAGE_SIZE = 20
+const CATEGORY_SETUP_STORAGE_PREFIX = 'user-category-setup-completed:'
 
 const typeLabelMap = entryTypeOptions.reduce<Record<EntryType, string>>(
   (labels, option) => {
@@ -119,6 +120,26 @@ function getUploaderLabel(entry: EntryRecord, currentUserId?: string) {
   return entry.uploaderName ?? entry.uploaderEmail ?? entry.userId
 }
 
+function getCategorySetupStorageKey(userId: string) {
+  return `${CATEGORY_SETUP_STORAGE_PREFIX}${userId}`
+}
+
+function readHasCompletedCategorySetup(userId: string) {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  return window.localStorage.getItem(getCategorySetupStorageKey(userId)) === 'true'
+}
+
+function writeHasCompletedCategorySetup(userId: string) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.setItem(getCategorySetupStorageKey(userId), 'true')
+}
+
 export function EntriesHomePage() {
   const { user } = useAuth()
   const suggestedCategoryNames = useMemo(() => [...DEFAULT_USER_CATEGORY_NAMES], [])
@@ -145,7 +166,6 @@ export function EntriesHomePage() {
   const [categoryErrorMessage, setCategoryErrorMessage] = useState<string | null>(null)
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false)
   const [isSavingCategorySetup, setIsSavingCategorySetup] = useState(false)
-  const [didDismissCategorySetup, setDidDismissCategorySetup] = useState(false)
 
   useEffect(() => {
     let ignore = false
@@ -201,6 +221,10 @@ export function EntriesHomePage() {
 
         if (!ignore) {
           setUserCategories(nextCategories)
+
+          if (nextCategories.length > 0) {
+            writeHasCompletedCategorySetup(user.id)
+          }
         }
       } catch (error) {
         if (!ignore) {
@@ -373,15 +397,16 @@ export function EntriesHomePage() {
 
   useEffect(() => {
     if (!user) {
-      setDidDismissCategorySetup(false)
       setIsSetupModalOpen(false)
       return
     }
 
-    if (userCategories.length === 0 && !didDismissCategorySetup) {
+    const didCompleteSetup = readHasCompletedCategorySetup(user.id)
+
+    if (userCategories.length === 0 && !didCompleteSetup) {
       setIsSetupModalOpen(true)
     }
-  }, [didDismissCategorySetup, user, userCategories.length])
+  }, [user, userCategories.length])
 
   const totalPages = Math.max(1, Math.ceil(filteredEntries.length / PAGE_SIZE))
   const safeCurrentPage = Math.min(currentPage, totalPages)
@@ -574,7 +599,7 @@ export function EntriesHomePage() {
 
       const nextCategories = await refreshUserCategories()
 
-      setDidDismissCategorySetup(true)
+      writeHasCompletedCategorySetup(user.id)
       setIsSetupModalOpen(false)
 
       if (nextCategories[0]) {
@@ -661,7 +686,9 @@ export function EntriesHomePage() {
         isSubmitting={isSavingCategorySetup}
         errorMessage={categoryErrorMessage}
         onClose={() => {
-          setDidDismissCategorySetup(true)
+          if (user) {
+            writeHasCompletedCategorySetup(user.id)
+          }
           setIsSetupModalOpen(false)
           setCategoryErrorMessage(null)
         }}
