@@ -167,6 +167,24 @@ a:focus-visible {
   gap: 24px;
 }
 
+.brand {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.brand__logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  object-fit: cover;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
+}
+
+.brand__copy {
+  gap: 6px;
+}
+
 .brand__title,
 .section-title h1,
 .detail-hero__content h1,
@@ -250,6 +268,10 @@ a:focus-visible {
 .header-meta__text {
   font-size: 0.84rem;
   line-height: 1.45;
+}
+
+.header-meta__text--stacked {
+  max-width: 18rem;
 }
 
 .button,

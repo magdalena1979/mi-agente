@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-labelledby="title">
-  <title>Mi Agente</title>
-  <rect width="192" height="192" rx="44" fill="#0f766e" />
-  <rect x="24" y="24" width="144" height="144" rx="30" fill="#f7f4ec" />
-  <path d="M58 72h76v12H58zM58 96h52v12H58zM58 120h76v12H58z" fill="#0f766e" />
-  <circle cx="132" cy="96" r="20" fill="#0f766e" opacity="0.18" />
-  <path d="M126 87.5a8.5 8.5 0 1 1 0 17a8.5 8.5 0 0 1 0-17Zm14.4 14.4l9.6 9.6-5.4 5.4-9.6-9.6" fill="#0f766e" />
-</svg>
