@@ -119,158 +119,185 @@ export function EntryForm({
         </div>
       ) : null}
 
-      <div className="field-grid field-grid--title-row">
-        <label className="form-field">
-          <span>Tipo</span>
-          <select {...form.register('type')} disabled={isReadOnly}>
-            {entryTypeOptions.map((option) => (
-              <option key={option.type} value={option.type}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          {form.formState.errors.type ? (
-            <small className="form-error">{form.formState.errors.type.message}</small>
-          ) : null}
-        </label>
+      <section className="form-section">
+        <div className="form-section__header">
+          <h3 className="form-section__title">Basico</h3>
+          <p className="form-section__description">
+            Lo principal para reconocer este item rapido cuando vuelvas a verlo.
+          </p>
+        </div>
+
+        <div className="field-grid field-grid--title-row">
+          <label className="form-field">
+            <span>Tipo</span>
+            <select {...form.register('type')} disabled={isReadOnly}>
+              {entryTypeOptions.map((option) => (
+                <option key={option.type} value={option.type}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            {form.formState.errors.type ? (
+              <small className="form-error">{form.formState.errors.type.message}</small>
+            ) : null}
+          </label>
+
+          <label className="form-field">
+            <span>Titulo</span>
+            <input
+              type="text"
+              placeholder="Ej. El viaje de Chihiro, brownie de banana, feria de libros"
+              disabled={isReadOnly}
+              {...form.register('title')}
+            />
+            {form.formState.errors.title ? (
+              <small className="form-error">{form.formState.errors.title.message}</small>
+            ) : null}
+          </label>
+        </div>
 
         <label className="form-field">
-          <span>Titulo</span>
+          <span>Resumen</span>
+          <textarea
+            rows={4}
+            placeholder="Descripcion corta o contexto util para encontrar esta entry despues."
+            disabled={isReadOnly}
+            {...form.register('summary')}
+          />
+        </label>
+      </section>
+
+      <section className="form-section">
+        <div className="form-section__header">
+          <h3 className="form-section__title">Origen y organizacion</h3>
+          <p className="form-section__description">
+            Fuente, link y etiquetas para que todo quede ordenado sin esfuerzo.
+          </p>
+        </div>
+
+        <div className="field-grid">
+          <label className="form-field">
+            <span>Origen</span>
+            <select {...form.register('sourceType')} disabled={isReadOnly}>
+              {entrySourceOptions.map((sourceType) => (
+                <option key={sourceType} value={sourceType}>
+                  {sourceType}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="form-field">
+            <span>Nombre de la fuente</span>
+            <input
+              type="text"
+              placeholder="Ej. Instagram, WhatsApp, newsletter, articulo"
+              disabled={isReadOnly}
+              {...form.register('sourceName')}
+            />
+          </label>
+        </div>
+
+        {isLinkSource ? (
+          <label className="form-field">
+            <span>Link</span>
+            <input
+              type="url"
+              placeholder="https://..."
+              disabled={isReadOnly}
+              {...form.register('sourceUrl')}
+            />
+          </label>
+        ) : null}
+
+        <label className="form-field">
+          <span>Tags</span>
           <input
             type="text"
-            placeholder="Ej. El viaje de Chihiro, brownie de banana, feria de libros"
+            placeholder="Separados por coma"
             disabled={isReadOnly}
-            {...form.register('title')}
+            {...form.register('tagsText')}
           />
-          {form.formState.errors.title ? (
-            <small className="form-error">{form.formState.errors.title.message}</small>
-          ) : null}
         </label>
-      </div>
 
-      <label className="form-field">
-        <span>Resumen</span>
-        <textarea
-          rows={4}
-          placeholder="Descripcion corta o contexto util para encontrar esta entry despues."
-          disabled={isReadOnly}
-          {...form.register('summary')}
-        />
-      </label>
+        <div className="form-field">
+          <span>Subcategorias personales</span>
+          <p className="form-helper">
+            Funcionan como tags tuyos para organizar mejor el archivo sin cambiar el tipo de la entry.
+          </p>
 
-      <div className="field-grid">
-        <label className="form-field">
-          <span>Origen</span>
-          <select {...form.register('sourceType')} disabled={isReadOnly}>
-            {entrySourceOptions.map((sourceType) => (
-              <option key={sourceType} value={sourceType}>
-                {sourceType}
-              </option>
+          <div className="category-filter-grid category-filter-grid--form">
+            {availableCategories.map((category) => (
+              <button
+                key={category.id}
+                type="button"
+                className={
+                  selectedCategoryIds.includes(category.id)
+                    ? 'filter-chip filter-chip--active'
+                    : 'filter-chip'
+                }
+                disabled={isReadOnly}
+                onClick={() => {
+                  onToggleCategory?.(category.id)
+                }}
+              >
+                {category.name}
+              </button>
             ))}
-          </select>
-        </label>
 
-        <label className="form-field">
-          <span>Nombre de la fuente</span>
-          <input
-            type="text"
-            placeholder="Ej. Instagram, WhatsApp, newsletter, articulo"
-            disabled={isReadOnly}
-            {...form.register('sourceName')}
-          />
-        </label>
-      </div>
-
-      {isLinkSource ? (
-        <label className="form-field">
-          <span>Link</span>
-          <input
-            type="url"
-            placeholder="https://..."
-            disabled={isReadOnly}
-            {...form.register('sourceUrl')}
-          />
-        </label>
-      ) : null}
-
-      <label className="form-field">
-        <span>Tags</span>
-        <input
-          type="text"
-          placeholder="Separados por coma"
-          disabled={isReadOnly}
-          {...form.register('tagsText')}
-        />
-      </label>
-
-      <div className="form-field">
-        <span>Subcategorias personales</span>
-        <p className="form-helper">
-          Funcionan como tags tuyos para organizar mejor el archivo sin cambiar el tipo de la entry.
-        </p>
-
-        <div className="category-filter-grid category-filter-grid--form">
-          {availableCategories.map((category) => (
             <button
-              key={category.id}
               type="button"
-              className={
-                selectedCategoryIds.includes(category.id)
-                  ? 'filter-chip filter-chip--active'
-                  : 'filter-chip'
-              }
+              className="filter-chip filter-chip--add"
               disabled={isReadOnly}
               onClick={() => {
-                onToggleCategory?.(category.id)
+                onOpenCreateCategory?.()
               }}
             >
-              {category.name}
+              {availableCategories.length > 0 ? 'Otra' : 'Crear primera'}
             </button>
-          ))}
-
-          <button
-            type="button"
-            className="filter-chip filter-chip--add"
-            disabled={isReadOnly}
-            onClick={() => {
-              onOpenCreateCategory?.()
-            }}
-          >
-            {availableCategories.length > 0 ? 'Otra' : 'Crear primera'}
-          </button>
+          </div>
         </div>
-      </div>
+      </section>
 
       {visibleFields.length > 0 ? (
-        <div className="field-grid">
-          {visibleFields.map((field) => (
-            <label
-              className={
-                field.key === 'note'
-                  ? 'form-field form-field--full'
-                  : 'form-field'
-              }
-              key={field.key}
-            >
-              <span>{field.label}</span>
-              {field.input === 'textarea' ? (
-                <textarea
-                  rows={field.key === 'ingredientsText' ? 5 : 4}
-                  placeholder={field.placeholder}
-                  disabled={isReadOnly}
-                  {...form.register(field.key)}
-                />
-              ) : (
-                <input
-                  type="text"
-                  placeholder={field.placeholder}
-                  disabled={isReadOnly}
-                  {...form.register(field.key)}
-                />
-              )}
-            </label>
-          ))}
-        </div>
+        <section className="form-section">
+          <div className="form-section__header">
+            <h3 className="form-section__title">Detalles</h3>
+            <p className="form-section__description">
+              Datos extra para completar la ficha con el nivel de detalle que quieras.
+            </p>
+          </div>
+
+          <div className="field-grid">
+            {visibleFields.map((field) => (
+              <label
+                className={
+                  field.key === 'note'
+                    ? 'form-field form-field--full'
+                    : 'form-field'
+                }
+                key={field.key}
+              >
+                <span>{field.label}</span>
+                {field.input === 'textarea' ? (
+                  <textarea
+                    rows={field.key === 'ingredientsText' ? 5 : 4}
+                    placeholder={field.placeholder}
+                    disabled={isReadOnly}
+                    {...form.register(field.key)}
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    placeholder={field.placeholder}
+                    disabled={isReadOnly}
+                    {...form.register(field.key)}
+                  />
+                )}
+              </label>
+            ))}
+          </div>
+        </section>
       ) : null}
 
     </form>

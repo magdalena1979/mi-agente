@@ -21,11 +21,10 @@ export function AppShell() {
           <div className="app-header__top">
             <div className="brand">
               <div className="brand__copy">
-                <img
-                  src="/logo.png"
-                  alt="The Things We Share"
-                  className="brand__logo"
-                />
+                <h1 className="brand__title">The Things We Share</h1>
+                <p className="brand__subtitle">
+                  Guarda, ordena y comparte hallazgos en un espacio simple.
+                </p>
               </div>
             </div>
 

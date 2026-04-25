@@ -697,6 +697,15 @@ export function EntriesHomePage() {
 
       <header className="library-header">
         <div className="library-header__main">
+          <div className="section-title">
+            <h1>{activeDesktopTab === 'entries' ? 'Biblioteca' : 'Compartido'}</h1>
+            <p>
+              {activeDesktopTab === 'entries'
+                ? 'Tus capturas, links y recomendaciones en una lista clara y fácil de explorar.'
+                : 'Invitaciones activas y accesos compartidos en un solo lugar.'}
+            </p>
+          </div>
+
           <div className="library-tabs" aria-label="Secciones principales">
             <button
               type="button"
@@ -879,22 +888,25 @@ export function EntriesHomePage() {
                     <article className="library-row" key={entry.id}>
                       <Link className="library-row__main" to={`/entries/${entry.id}`}>
                         <div className="library-row__content">
+                          <div className="library-row__meta-group">
+                            <span className="library-row__type">
+                              {typeLabelMap[entry.type]}
+                            </span>
+                            <span className="library-row__meta-pill">{uploaderLabel}</span>
+                          </div>
+
                           <h2>{entry.title}</h2>
                           <p>{entry.summary || rowMeta || 'Sin descripcion todavia.'}</p>
+
+                          <div className="library-row__details">
+                            <span>{formatDate(entry.updatedAt)}</span>
+                            {rowMeta ? <span>{rowMeta}</span> : null}
+                          </div>
                         </div>
 
-                        <span className="library-row__type">
-                          {typeLabelMap[entry.type]}
+                        <span className="library-row__chevron" aria-hidden="true">
+                          &#8250;
                         </span>
-
-                        <div className="library-row__uploader">
-                          <span>{uploaderLabel}</span>
-                        </div>
-
-                        <div className="library-row__side">
-                          <span>{formatDate(entry.updatedAt)}</span>
-                          {rowMeta ? <small>{rowMeta}</small> : null}
-                        </div>
                       </Link>
 
                       <div className="library-row__actions">

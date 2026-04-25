@@ -3,10 +3,19 @@ import { Link, useParams } from 'react-router-dom'
 
 import { useAuth } from '@/features/auth/auth-context'
 import { listEntriesForList } from '@/features/entries/entries-api'
+import { entryTypeOptions } from '@/features/entries/config/entry-type-config'
 import { ShareListModal } from '@/features/lists/components/ShareListModal'
 import { getList } from '@/features/lists/lists-api'
 import type { EntryRecord } from '@/types/entries'
 import type { ListRecord } from '@/types/lists'
+
+const entryTypeLabelMap = entryTypeOptions.reduce<Record<string, string>>(
+  (labels, option) => {
+    labels[option.type] = option.label
+    return labels
+  },
+  {},
+)
 
 function formatDate(date: string) {
   return new Intl.DateTimeFormat('es-AR', {
@@ -198,20 +207,30 @@ export function ListDetailPage() {
                   <article className="library-row" key={entry.id}>
                     <Link className="library-row__main" to={`/entries/${entry.id}`}>
                       <div className="library-row__content">
+                        <div className="library-row__meta-group">
+                          <span className="library-row__type">
+                            {entryTypeLabelMap[entry.type] ?? entry.type}
+                          </span>
+                        </div>
+
                         <h2>{entry.title}</h2>
                         <p>
                           {entry.summary ||
                             getEntrySecondaryMeta(entry) ||
                             'Sin descripcion todavia.'}
                         </p>
+
+                        <div className="library-row__details">
+                          <span>{formatDate(entry.updatedAt)}</span>
+                          {getEntrySecondaryMeta(entry) ? (
+                            <span>{getEntrySecondaryMeta(entry)}</span>
+                          ) : null}
+                        </div>
                       </div>
 
-                      <span className="library-row__type">{entry.type}</span>
-
-                      <div className="library-row__side">
-                        <span>{formatDate(entry.updatedAt)}</span>
-                        <small>{getEntrySecondaryMeta(entry)}</small>
-                      </div>
+                      <span className="library-row__chevron" aria-hidden="true">
+                        &#8250;
+                      </span>
                     </Link>
                   </article>
                 ))}
