@@ -78,8 +78,8 @@ export default defineConfig(({ mode }) => {
           'favicon_io/apple-touch-icon.png',
         ],
         manifest: {
-          name: 'Finder',
-          short_name: 'Finder',
+          name: 'Refind',
+          short_name: 'Refind',
           description:
             'PWA para guardar y compartir cosas que te interesan desde capturas, links, OCR e IA.',
           theme_color: '#F2F2F7',
