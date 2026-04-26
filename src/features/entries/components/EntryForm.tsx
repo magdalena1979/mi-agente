@@ -28,6 +28,7 @@ type EntryFormProps = {
   onDelete?: () => Promise<void> | void
   isDeleting?: boolean
   isReadOnly?: boolean
+  isStatusLocked?: boolean
   availableCategories?: UserCategoryRecord[]
   selectedCategoryIds?: string[]
   onToggleCategory?: (categoryId: string) => void
@@ -49,6 +50,7 @@ export function EntryForm({
   onDelete,
   isDeleting = false,
   isReadOnly = false,
+  isStatusLocked = false,
   availableCategories = [],
   selectedCategoryIds = [],
   onToggleCategory,
@@ -70,21 +72,22 @@ export function EntryForm({
   const visibleFields = getVisibleEntryFieldDefinitions(selectedType)
   const isSubmitDisabled = !canSubmit || isSubmitting || isDeleting
   const isLinkSource = selectedSourceType === 'link'
+  const isFormReadOnly = isReadOnly || isStatusLocked
 
   useEffect(() => {
     form.reset(defaultValues)
   }, [defaultValues, form])
 
   useEffect(() => {
-    if (isReadOnly) {
+    if (isFormReadOnly) {
       form.reset(defaultValues)
     }
-  }, [defaultValues, form, isReadOnly])
+  }, [defaultValues, form, isFormReadOnly])
 
   return (
     <form
       id={formId}
-      className={isReadOnly ? 'entry-form entry-form--readonly' : 'entry-form'}
+      className={isFormReadOnly ? 'entry-form entry-form--readonly' : 'entry-form'}
       onSubmit={form.handleSubmit(onSubmit)}
     >
       <input type="hidden" {...form.register('status')} />
@@ -130,7 +133,7 @@ export function EntryForm({
         <div className="field-grid field-grid--title-row">
           <label className="form-field">
             <span>Tipo</span>
-            <select {...form.register('type')} disabled={isReadOnly}>
+            <select {...form.register('type')} disabled={isFormReadOnly}>
               {entryTypeOptions.map((option) => (
                 <option key={option.type} value={option.type}>
                   {option.label}
@@ -147,7 +150,7 @@ export function EntryForm({
             <input
               type="text"
               placeholder="Ej. El viaje de Chihiro, brownie de banana, feria de libros"
-              disabled={isReadOnly}
+              disabled={isFormReadOnly}
               {...form.register('title')}
             />
             {form.formState.errors.title ? (
@@ -161,7 +164,7 @@ export function EntryForm({
           <textarea
             rows={4}
             placeholder="Descripcion corta o contexto util para encontrar esta entry despues."
-            disabled={isReadOnly}
+            disabled={isFormReadOnly}
             {...form.register('summary')}
           />
         </label>
@@ -178,7 +181,7 @@ export function EntryForm({
         <div className="field-grid">
           <label className="form-field">
             <span>Origen</span>
-            <select {...form.register('sourceType')} disabled={isReadOnly}>
+            <select {...form.register('sourceType')} disabled={isFormReadOnly}>
               {entrySourceOptions.map((sourceType) => (
                 <option key={sourceType} value={sourceType}>
                   {sourceType}
@@ -192,7 +195,7 @@ export function EntryForm({
             <input
               type="text"
               placeholder="Ej. Instagram, WhatsApp, newsletter, articulo"
-              disabled={isReadOnly}
+              disabled={isFormReadOnly}
               {...form.register('sourceName')}
             />
           </label>
@@ -204,7 +207,7 @@ export function EntryForm({
             <input
               type="url"
               placeholder="https://..."
-              disabled={isReadOnly}
+              disabled={isFormReadOnly}
               {...form.register('sourceUrl')}
             />
           </label>
@@ -215,7 +218,7 @@ export function EntryForm({
           <input
             type="text"
             placeholder="Separados por coma"
-            disabled={isReadOnly}
+            disabled={isFormReadOnly}
             {...form.register('tagsText')}
           />
         </label>
@@ -236,7 +239,7 @@ export function EntryForm({
                     ? 'filter-chip filter-chip--active'
                     : 'filter-chip'
                 }
-                disabled={isReadOnly}
+                disabled={isFormReadOnly}
                 onClick={() => {
                   onToggleCategory?.(category.id)
                 }}
@@ -248,7 +251,7 @@ export function EntryForm({
             <button
               type="button"
               className="filter-chip filter-chip--add"
-              disabled={isReadOnly}
+              disabled={isFormReadOnly}
               onClick={() => {
                 onOpenCreateCategory?.()
               }}
@@ -283,14 +286,14 @@ export function EntryForm({
                   <textarea
                     rows={field.key === 'ingredientsText' ? 5 : 4}
                     placeholder={field.placeholder}
-                    disabled={isReadOnly}
+                    disabled={isFormReadOnly}
                     {...form.register(field.key)}
                   />
                 ) : (
                   <input
                     type="text"
                     placeholder={field.placeholder}
-                    disabled={isReadOnly}
+                    disabled={isFormReadOnly}
                     {...form.register(field.key)}
                   />
                 )}

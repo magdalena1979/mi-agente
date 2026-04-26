@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 import {
   normalizeAiAnalysis,
-} from '../../src/features/ai/schemas'
+} from '../../src/features/ai/schemas.js'
 
 const MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'
 const SUPPORTED_IMAGE_MIME_TYPES = new Set([

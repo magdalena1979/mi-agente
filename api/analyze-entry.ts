@@ -5,7 +5,7 @@ import {
   AnalyzeEntryUpstreamError,
   AnalyzeEntryValidationError,
   getAnalyzePayloadDebugSummary,
-} from './_lib/analyze-entry'
+} from './_lib/analyze-entry.js'
 
 function getRequestBody(req: VercelRequest) {
   if (typeof req.body === 'string') {

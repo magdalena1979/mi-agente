@@ -4,7 +4,7 @@ import { defineConfig, loadEnv, type PluginOption } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-import { analyzeEntryPayload } from './api/_lib/analyze-entry'
+import { analyzeEntryPayload } from './api/_lib/analyze-entry.js'
 
 function analyzeEntryDevPlugin(groqApiKey: string | undefined): PluginOption {
   return {

@@ -46,10 +46,6 @@ function formatDate(date: string) {
   }).format(new Date(date))
 }
 
-function getVisibleStatus(status: EntryRecord['status']) {
-  return status === 'reviewed' ? 'reviewed' : 'draft'
-}
-
 function getAiRefreshCount(entry: EntryRecord) {
   const rawValue = (entry.metadata as Record<string, string | undefined>)[
     'aiRefreshCount'
