@@ -72,6 +72,11 @@ export default defineConfig(({ mode }) => {
         },
         includeAssets: [
           'logo.png',
+          'pwa-192.png',
+          'pwa-512.png',
+          'apple-touch-icon.png',
+          'favicon-32x32.png',
+          'favicon-16x16.png',
         ],
         manifest: {
           name: 'Refind',
@@ -85,20 +90,20 @@ export default defineConfig(({ mode }) => {
           orientation: 'portrait',
           icons: [
             {
-              src: '/logo.png',
+              src: '/pwa-192.png',
               sizes: '192x192',
               type: 'image/png',
             },
             {
-              src: '/logo.png',
+              src: '/pwa-512.png',
               sizes: '512x512',
               type: 'image/png',
             },
             {
-              src: '/logo.png',
+              src: '/pwa-512.png',
               sizes: '512x512',
               type: 'image/png',
-              purpose: 'any',
+              purpose: 'any maskable',
             },
           ],
         },

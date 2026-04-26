@@ -1,19 +1,79 @@
 import Groq from 'groq-sdk'
 import { z } from 'zod'
 
-import {
-  normalizeAiAnalysis,
-} from '../../src/features/ai/schemas.js'
-
 const MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'
 const SUPPORTED_IMAGE_MIME_TYPES = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
 ])
+const ENTRY_TYPES = [
+  'book',
+  'event',
+  'recipe',
+  'movie',
+  'series',
+  'article',
+  'place',
+  'trip',
+  'plant',
+  'garden',
+  'collection',
+  'other',
+] as const
 
 export class AnalyzeEntryValidationError extends Error {}
 export class AnalyzeEntryUpstreamError extends Error {}
+
+const emptyAiFields = {
+  author: '',
+  date: '',
+  time: '',
+  location: '',
+  director: '',
+  cast: '',
+  genre: '',
+  year: '',
+  duration: '',
+  platform: '',
+  ingredientsText: '',
+  topic: '',
+  note: '',
+}
+
+const aiFieldSchema = z
+  .object({
+    author: z.string().default(''),
+    date: z.string().default(''),
+    time: z.string().default(''),
+    location: z.string().default(''),
+    director: z.string().default(''),
+    cast: z.string().default(''),
+    genre: z.string().default(''),
+    year: z.string().default(''),
+    duration: z.string().default(''),
+    platform: z.string().default(''),
+    ingredientsText: z.string().default(''),
+    topic: z.string().default(''),
+    note: z.string().default(''),
+  })
+  .strict()
+
+const aiAnalysisSchema = z
+  .object({
+    detectedType: z.enum(ENTRY_TYPES).default('other'),
+    title: z.string().default(''),
+    summary: z.string().default(''),
+    sourceName: z.string().default(''),
+    tags: z.array(z.string()).default([]),
+    fields: aiFieldSchema.default(emptyAiFields),
+    confidence: z.number().min(0).max(1).default(0),
+  })
+  .strict()
+
+function normalizeAiAnalysis(payload: unknown) {
+  return aiAnalysisSchema.parse(payload)
+}
 
 const optionalStringSchema = z.preprocess(
   (value) => (typeof value === 'string' ? value : ''),
