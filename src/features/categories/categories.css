@@ -1,0 +1,18 @@
+.category-manage-list {
+  display: grid;
+  gap: 12px;
+}
+
+.category-manage-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: var(--surface-muted);
+}
+
+.category-manage-item strong {
+  color: var(--text);
+}

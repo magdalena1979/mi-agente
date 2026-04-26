@@ -9,8 +9,26 @@ type ErrorResponse = {
   requestId?: string
 }
 
+function cleanText(text: string) {
+  return text.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+function normalizeAnalyzeEntryPayload(input: AnalyzeEntryRequest): AnalyzeEntryRequest {
+  return {
+    ...input,
+    combinedExtractedText: cleanText(input.combinedExtractedText),
+    ocrTextByImage: input.ocrTextByImage.map((item) => ({
+      ...item,
+      text: cleanText(item.text),
+      errorMessage: cleanText(item.errorMessage),
+    })),
+  }
+}
+
 export async function analyzeEntry(input: AnalyzeEntryRequest) {
-  const payload = normalizeAnalyzeEntryRequest(input)
+  const payload = normalizeAnalyzeEntryRequest(
+    normalizeAnalyzeEntryPayload(input),
+  )
 
   const response = await fetch('/api/analyze-entry', {
     method: 'POST',

@@ -165,7 +165,7 @@ export function AuthPage() {
     <section className="page page--auth">
       <div className="section-title auth-hero">
         
-        <h1>Tu archivo de cosas en comun</h1>
+        <h1>Tu archivo ordenado</h1>
         <p>
           {invitedEmail
             ? `Crea tu cuenta o inicia sesion con ${invitedEmail} para aceptar la invitacion.`

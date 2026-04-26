@@ -1,9 +1,8 @@
 import Groq from 'groq-sdk'
+import { z } from 'zod'
 
 import {
   normalizeAiAnalysis,
-  normalizeAnalyzeEntryRequest,
-  type AnalyzeEntryRequest,
 } from '../../src/features/ai/schemas'
 
 const MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'
@@ -16,6 +15,96 @@ const SUPPORTED_IMAGE_MIME_TYPES = new Set([
 export class AnalyzeEntryValidationError extends Error {}
 export class AnalyzeEntryUpstreamError extends Error {}
 
+const optionalStringSchema = z.preprocess(
+  (value) => (typeof value === 'string' ? value : ''),
+  z.string(),
+)
+
+const optionalDataUrlSchema = z.preprocess(
+  (value) =>
+    typeof value === 'string' && value.startsWith('data:image/')
+      ? value
+      : undefined,
+  z.string().startsWith('data:image/').optional(),
+)
+
+const analyzeEntryImageInputSchema = z
+  .object({
+    name: z.string().min(1).catch('capture'),
+    type: z.string().min(1).catch('image/jpeg'),
+    position: z.coerce.number().int().min(0).catch(0),
+    dataUrl: optionalDataUrlSchema,
+  })
+  .passthrough()
+
+const analyzeEntryOcrInputSchema = z
+  .object({
+    name: z.string().min(1).catch('capture'),
+    position: z.coerce.number().int().min(0).catch(0),
+    text: optionalStringSchema,
+    status: z.preprocess(
+      (value) => (value === 'error' ? 'error' : 'success'),
+      z.enum(['success', 'error']),
+    ),
+    errorMessage: optionalStringSchema,
+  })
+  .passthrough()
+
+const analyzeEntryServerRequestSchema = z
+  .object({
+    combinedExtractedText: optionalStringSchema,
+    images: z.preprocess(
+      (value) => (Array.isArray(value) ? value : []),
+      z.array(analyzeEntryImageInputSchema),
+    ),
+    ocrTextByImage: z.preprocess(
+      (value) => (Array.isArray(value) ? value : []),
+      z.array(analyzeEntryOcrInputSchema),
+    ),
+  })
+  .passthrough()
+
+type AnalyzeEntryImageInput = {
+  name: string
+  type: string
+  position: number
+  dataUrl?: string
+}
+
+type AnalyzeEntryOcrInput = {
+  name: string
+  position: number
+  text: string
+  status: 'success' | 'error'
+  errorMessage: string
+}
+
+type AnalyzeEntryRequest = {
+  combinedExtractedText: string
+  images: AnalyzeEntryImageInput[]
+  ocrTextByImage: AnalyzeEntryOcrInput[]
+}
+
+type AnalyzeEntryImageForAi = AnalyzeEntryImageInput & {
+  dataUrl: string
+}
+
+type AnalyzeEntryPreparedPayload = {
+  combinedExtractedText: string
+  images: AnalyzeEntryImageForAi[]
+  ocrTextByImage: AnalyzeEntryOcrInput[]
+}
+
+function normalizeAnalyzeEntryRequest(payload: unknown) {
+  const parsedPayload = analyzeEntryServerRequestSchema.safeParse(payload)
+
+  if (!parsedPayload.success) {
+    throw new AnalyzeEntryValidationError('El payload de analisis es invalido.')
+  }
+
+  return parsedPayload.data as AnalyzeEntryRequest
+}
+
 function estimateDataUrlBytes(dataUrl: string) {
   const [, base64Payload = ''] = dataUrl.split(',', 2)
   return Math.ceil((base64Payload.length * 3) / 4)
@@ -26,14 +115,31 @@ function getImageMimeTypeFromDataUrl(dataUrl: string) {
   return mimeMatch?.[1]?.toLowerCase() ?? ''
 }
 
-function validatePayloadForAi(payload: AnalyzeEntryRequest) {
-  if (payload.images.length === 0) {
+function cleanText(text: string) {
+  return text.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+function hasUsableOcrText(payload: AnalyzeEntryRequest) {
+  return (
+    payload.combinedExtractedText.trim().length > 0 ||
+    payload.ocrTextByImage.some((item) => item.text.trim().length > 0)
+  )
+}
+
+function validatePayloadForAi(
+  payload: AnalyzeEntryRequest,
+): AnalyzeEntryPreparedPayload {
+  const imagesWithData = payload.images.filter(
+    (image): image is AnalyzeEntryImageForAi => typeof image.dataUrl === 'string',
+  )
+
+  if (imagesWithData.length === 0 && !hasUsableOcrText(payload)) {
     throw new AnalyzeEntryValidationError(
-      'Necesitamos al menos una captura valida para correr la IA.',
+      'Necesitamos texto OCR o al menos una captura valida para correr la IA.',
     )
   }
 
-  payload.images.forEach((image, index) => {
+  imagesWithData.forEach((image, index) => {
     const mimeType = getImageMimeTypeFromDataUrl(image.dataUrl)
     const estimatedBytes = estimateDataUrlBytes(image.dataUrl)
 
@@ -55,19 +161,35 @@ function validatePayloadForAi(payload: AnalyzeEntryRequest) {
       )
     }
   })
+
+  return {
+    ...payload,
+    images: imagesWithData,
+  }
 }
 
 export function getAnalyzePayloadDebugSummary(rawPayload: unknown) {
   try {
     const payload = normalizeAnalyzeEntryRequest(rawPayload)
+    const imagesWithData = payload.images.filter((image) => Boolean(image.dataUrl))
 
     return {
+      requestMode:
+        imagesWithData.length > 0
+          ? 'image+ocr'
+          : hasUsableOcrText(payload)
+            ? 'ocr-only'
+            : 'empty',
       imagesCount: payload.images.length,
+      usableImagesCount: imagesWithData.length,
+      missingImageDataCount: payload.images.length - imagesWithData.length,
       imageDiagnostics: payload.images.map((image) => ({
         name: image.name,
         position: image.position,
-        mimeType: getImageMimeTypeFromDataUrl(image.dataUrl),
-        estimatedBytes: estimateDataUrlBytes(image.dataUrl),
+        declaredType: image.type,
+        hasDataUrl: Boolean(image.dataUrl),
+        mimeType: image.dataUrl ? getImageMimeTypeFromDataUrl(image.dataUrl) : null,
+        estimatedBytes: image.dataUrl ? estimateDataUrlBytes(image.dataUrl) : null,
       })),
       combinedExtractedTextLength: payload.combinedExtractedText.length,
       ocrItems: payload.ocrTextByImage.length,
@@ -80,21 +202,30 @@ export function getAnalyzePayloadDebugSummary(rawPayload: unknown) {
   }
 }
 
-function buildPrompt(payload: AnalyzeEntryRequest) {
+function buildPrompt(payload: AnalyzeEntryPreparedPayload) {
+  const cleanedCombinedText = cleanText(payload.combinedExtractedText)
   const ocrByImage = payload.ocrTextByImage
     .map((item) => {
       const suffix =
         item.status === 'error'
-          ? `OCR error: ${item.errorMessage || 'unknown error'}`
-          : item.text || '(no text detected)'
+          ? `OCR error: ${cleanText(item.errorMessage) || 'unknown error'}`
+          : cleanText(item.text) || '(no text detected)'
 
       return `Image ${item.position + 1} - ${item.name}\n${suffix}`
     })
     .join('\n\n')
+  const ocrInput = {
+    text: cleanedCombinedText,
+    source: 'screenshot',
+    language: 'auto',
+  }
 
   return [
     'Analyze these screenshots as a single personal entry for a Spanish-language personal catalog app.',
-    'Use both the screenshot visuals and the OCR text.',
+    payload.images.length > 0
+      ? 'Use both the screenshot visuals and the OCR text.'
+      : 'The request does not include the original screenshot images. Use only the OCR text and do not infer visual UI details that are not supported by the text.',
+    'Primary task: extract a title, detect the content type (book, series, movie, article, idea, place, trip, recipe, plant, garden, collection or other), and write a clear useful summary from the OCR text and any available screenshot evidence.',
     'Classify the entry as exactly one of: book, event, recipe, movie, series, article, place, trip, plant, garden, collection, other.',
     'Return valid JSON only.',
     'Important domain rules:',
@@ -141,8 +272,11 @@ function buildPrompt(payload: AnalyzeEntryRequest) {
     'Expected JSON shape:',
     '{"detectedType":"movie","title":"string","summary":"string","sourceName":"Instagram @usuario","tags":["string"],"fields":{"author":"","date":"","time":"","location":"","director":"","cast":"","genre":"","year":"","duration":"","platform":"","ingredientsText":"","topic":"","note":""},"confidence":0.0}',
     '',
+    'OCR input object:',
+    JSON.stringify(ocrInput, null, 2),
+    '',
     'Combined OCR text:',
-    payload.combinedExtractedText || '(empty)',
+    cleanedCombinedText || '(empty)',
     '',
     'OCR by image:',
     ocrByImage,
@@ -157,8 +291,7 @@ export async function analyzeEntryPayload(
     throw new Error('Falta GROQ_API_KEY para analizar entradas.')
   }
 
-  const payload = normalizeAnalyzeEntryRequest(rawPayload)
-  validatePayloadForAi(payload)
+  const payload = validatePayloadForAi(normalizeAnalyzeEntryRequest(rawPayload))
   const client = new Groq({
     apiKey,
     maxRetries: 1,

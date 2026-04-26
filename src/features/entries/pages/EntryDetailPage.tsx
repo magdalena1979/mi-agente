@@ -3,13 +3,6 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { analyzeEntry } from '@/features/ai/analyze-entry'
 import { useAuth } from '@/features/auth/auth-context'
-import {
-  createUserCategory,
-  listEntryUserCategories,
-  listUserCategories,
-  replaceEntryUserCategories,
-} from '@/features/categories/categories-api'
-import { CreateUserCategoryModal } from '@/features/categories/components/CreateUserCategoryModal'
 import { EntryForm } from '@/features/entries/components/EntryForm'
 import {
   entryTypeOptions,
@@ -29,14 +22,8 @@ import {
   parseTags,
   type EntryFormValues,
 } from '@/features/entries/entry-form-schema'
-import {
-  createAnalysisImageDataUrl,
-  getAnalysisImageResizeOptions,
-} from '@/features/entries/image-utils'
+import { createAnalysisImageDataUrl } from '@/features/entries/image-utils'
 import { extractTextFromImage } from '@/features/ocr/services/browser-ocr'
-import type {
-  UserCategoryRecord,
-} from '@/types/categories'
 import type {
   EntryImageRecord,
   EntryRecord,
@@ -52,8 +39,6 @@ const entryTypeLabelMap = entryTypeOptions.reduce<Record<EntryType, string>>(
   {} as Record<EntryType, string>,
 )
 
-const MAX_ENTRY_CAPTURES = 2
-
 function formatDate(date: string) {
   return new Intl.DateTimeFormat('es-AR', {
     dateStyle: 'medium',
@@ -61,22 +46,26 @@ function formatDate(date: string) {
   }).format(new Date(date))
 }
 
-function getAiAnalysisCount(entry: EntryRecord) {
+function getVisibleStatus(status: EntryRecord['status']) {
+  return status === 'reviewed' ? 'reviewed' : 'draft'
+}
+
+function getAiRefreshCount(entry: EntryRecord) {
   const rawValue = (entry.metadata as Record<string, string | undefined>)[
-    'aiAnalysisCount'
-  ] ?? (entry.metadata as Record<string, string | undefined>)['aiRefreshCount']
+    'aiRefreshCount'
+  ]
   const parsedValue = Number.parseInt(rawValue ?? '0', 10)
 
   return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0
 }
 
-function buildMetadataWithAiAnalysisCount(
+function buildMetadataWithAiRefreshCount(
   metadata: EntryRecord['metadata'],
-  aiAnalysisCount: number,
+  aiRefreshCount: number,
 ) {
   return {
     ...metadata,
-    aiAnalysisCount: String(aiAnalysisCount),
+    aiRefreshCount: String(aiRefreshCount),
   } as EntryRecord['metadata']
 }
 
@@ -169,15 +158,8 @@ export function EntryDetailPage() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [isReanalyzing, setIsReanalyzing] = useState(false)
   const [isUploadingCaptures, setIsUploadingCaptures] = useState(false)
-  const [isEditing, setIsEditing] = useState(false)
-  const [isEditTransitioning, setIsEditTransitioning] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
-  const [availableCategories, setAvailableCategories] = useState<UserCategoryRecord[]>([])
-  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([])
-  const [isCreateCategoryModalOpen, setIsCreateCategoryModalOpen] = useState(false)
-  const [isSavingCategory, setIsSavingCategory] = useState(false)
-  const [categoryErrorMessage, setCategoryErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
     let ignore = false
@@ -224,63 +206,6 @@ export function EntryDetailPage() {
     }
   }, [entryId, user])
 
-  useEffect(() => {
-    let ignore = false
-
-    async function loadCategories() {
-      if (!user || !entryId) {
-        return
-      }
-
-      try {
-        const [nextCategories, nextAssignments] = await Promise.all([
-          listUserCategories(user.id),
-          listEntryUserCategories(user.id, [entryId]),
-        ])
-
-        if (!ignore) {
-          setAvailableCategories(nextCategories)
-          setSelectedCategoryIds(
-            nextAssignments.map((assignment) => assignment.userCategoryId),
-          )
-        }
-      } catch (error) {
-        if (!ignore) {
-          setCategoryErrorMessage(
-            error instanceof Error
-              ? error.message
-              : 'No pudimos cargar tus subcategorias personales.',
-          )
-        }
-      }
-    }
-
-    void loadCategories()
-
-    return () => {
-      ignore = true
-    }
-  }, [entryId, user])
-
-  useEffect(() => {
-    setIsEditing(false)
-    setIsEditTransitioning(false)
-  }, [entryId])
-
-  useEffect(() => {
-    if (!isEditTransitioning) {
-      return
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setIsEditTransitioning(false)
-    }, 250)
-
-    return () => {
-      window.clearTimeout(timeoutId)
-    }
-  }, [isEditTransitioning])
-
   const defaultValues = useMemo(
     () => getEntryFormDefaultValues(entry),
     [entry],
@@ -291,8 +216,8 @@ export function EntryDetailPage() {
     [entry],
   )
 
-  const aiAnalysisCount = entry ? getAiAnalysisCount(entry) : 0
-  const canReanalyze = Boolean(entry && entry.status === 'draft' && aiAnalysisCount < 2)
+  const aiRefreshCount = entry ? getAiRefreshCount(entry) : 0
+  const canReanalyze = Boolean(entry && entry.status === 'draft' && aiRefreshCount < 2)
 
   async function createAnalysisImageFromSavedCapture(image: EntryImageRecord) {
     if (!image.imageUrl) {
@@ -324,10 +249,7 @@ export function EntryDetailPage() {
       name: file.name,
       type: file.type || 'image/jpeg',
       position: image.position,
-      dataUrl: await createAnalysisImageDataUrl(
-        file,
-        getAnalysisImageResizeOptions('low-cost'),
-      ),
+      dataUrl: await createAnalysisImageDataUrl(file),
     }
   }
 
@@ -392,14 +314,7 @@ export function EntryDetailPage() {
         uploaderEmail: currentEntry.uploaderEmail,
       })
 
-      await replaceEntryUserCategories({
-        entryId,
-        userId: user.id,
-        categoryIds: selectedCategoryIds,
-      })
-
       setEntry(updatedEntry)
-      setIsEditing(false)
       setSuccessMessage('Los cambios se guardaron correctamente.')
     } catch (error) {
       setErrorMessage(
@@ -409,48 +324,6 @@ export function EntryDetailPage() {
       )
     } finally {
       setIsSubmitting(false)
-    }
-  }
-
-  function handleToggleCategory(categoryId: string) {
-    setSelectedCategoryIds((currentIds) =>
-      currentIds.includes(categoryId)
-        ? currentIds.filter((currentId) => currentId !== categoryId)
-        : [...currentIds, categoryId],
-    )
-  }
-
-  async function handleCreateCategory(name: string) {
-    if (!user) {
-      return
-    }
-
-    setIsSavingCategory(true)
-    setCategoryErrorMessage(null)
-
-    try {
-      const nextCategory = await createUserCategory({
-        userId: user.id,
-        name,
-      })
-
-      setAvailableCategories((currentCategories) =>
-        [...currentCategories, nextCategory].sort((leftCategory, rightCategory) =>
-          leftCategory.name.localeCompare(rightCategory.name),
-        ),
-      )
-      setSelectedCategoryIds((currentIds) =>
-        currentIds.includes(nextCategory.id) ? currentIds : [...currentIds, nextCategory.id],
-      )
-      setIsCreateCategoryModalOpen(false)
-    } catch (error) {
-      setCategoryErrorMessage(
-        error instanceof Error
-          ? error.message
-          : 'No pudimos guardar esta subcategoria personal.',
-      )
-    } finally {
-      setIsSavingCategory(false)
     }
   }
 
@@ -483,11 +356,6 @@ export function EntryDetailPage() {
   async function handleReanalyze() {
     if (!user || !entry) return
 
-    if (!isEditing) {
-      setErrorMessage('Primero toca Editar para habilitar cambios en esta entry.')
-      return
-    }
-
     if (entry.status !== 'draft') {
       setErrorMessage(
         'Solo puedes volver a correr la IA cuando la entry esta en draft.',
@@ -500,7 +368,7 @@ export function EntryDetailPage() {
       return
     }
 
-    if (getAiAnalysisCount(entry) >= 2) {
+    if (getAiRefreshCount(entry) >= 2) {
       setErrorMessage(
         'Esta entry ya alcanzo el limite de 2 actualizaciones con IA.',
       )
@@ -527,11 +395,7 @@ export function EntryDetailPage() {
         .join('\n\n')
 
       const images = await Promise.all(
-        entryImages
-          .slice()
-          .sort((leftImage, rightImage) => leftImage.position - rightImage.position)
-          .slice(0, 1)
-          .map((image) => createAnalysisImageFromSavedCapture(image)),
+        entryImages.map((image) => createAnalysisImageFromSavedCapture(image)),
       )
 
       const analysis = await analyzeEntry({
@@ -539,7 +403,7 @@ export function EntryDetailPage() {
         images,
         ocrTextByImage,
       })
-      const nextAiAnalysisCount = getAiAnalysisCount(entry) + 1
+      const nextAiRefreshCount = getAiRefreshCount(entry) + 1
 
       const updatedEntry = await updateEntry(entry.id, {
         userId: user.id,
@@ -552,12 +416,12 @@ export function EntryDetailPage() {
         status: 'draft',
         aiTags: analysis.tags.length > 0 ? analysis.tags : entry.aiTags,
         extractedText: combinedExtractedText || entry.extractedText,
-        metadata: buildMetadataWithAiAnalysisCount(
+        metadata: buildMetadataWithAiRefreshCount(
           {
             ...entry.metadata,
             ...analysis.fields,
           },
-          nextAiAnalysisCount,
+          nextAiRefreshCount,
         ),
         uploaderName: entry.uploaderName,
         uploaderEmail: entry.uploaderEmail,
@@ -587,22 +451,10 @@ export function EntryDetailPage() {
       return
     }
 
-    if (!isEditing) {
-      setErrorMessage('Primero toca Editar para agregar mas capturas.')
-      event.target.value = ''
-      return
-    }
-
     if (!canReanalyze) {
       setErrorMessage(
         'Solo puedes agregar mas capturas mientras la entry siga en draft y con IA disponible.',
       )
-      event.target.value = ''
-      return
-    }
-
-    if (entryImages.length >= MAX_ENTRY_CAPTURES) {
-      setErrorMessage('Cada entry puede tener como maximo 2 capturas.')
       event.target.value = ''
       return
     }
@@ -615,15 +467,9 @@ export function EntryDetailPage() {
       const existingImages = await Promise.all(
         entryImages.map((image) => createPendingUploadImageFromSavedCapture(image)),
       )
-      const availableSlots = MAX_ENTRY_CAPTURES - existingImages.length
-      const filesToAppend = selectedFiles.slice(0, availableSlots)
-
-      if (filesToAppend.length < selectedFiles.length) {
-        setErrorMessage('Solo puedes guardar hasta 2 capturas por entry.')
-      }
 
       const newImages = await Promise.all(
-        filesToAppend.map(async (file, index) => {
+        selectedFiles.map(async (file, index) => {
           const ocrText = await extractTextFromImage(file).catch(() => '')
 
           return {
@@ -715,86 +561,26 @@ export function EntryDetailPage() {
 
   return (
     <section className="page page--detail">
-      <CreateUserCategoryModal
-        isOpen={isCreateCategoryModalOpen}
-        isSubmitting={isSavingCategory}
-        errorMessage={categoryErrorMessage}
-        onClose={() => {
-          setIsCreateCategoryModalOpen(false)
-          setCategoryErrorMessage(null)
-        }}
-        onSubmit={handleCreateCategory}
-      />
-
       <BackLink />
 
-      <article className="detail-hero detail-hero--content-only">
-        <div className="detail-hero__content">
-          <div
-            className={
-              isEditing
-                ? 'detail-hero__toprow detail-hero__toprow--editing'
-                : 'detail-hero__toprow'
-            }
-          >
-            <div className="detail-hero__eyebrow">
-              <span className="entry-card__type">
-                {entryTypeLabelMap[entry.type]}
-              </span>
-              <span className="detail-chip">Actualizado {formatDate(entry.updatedAt)}</span>
-              {entry.sourceName ? <span className="detail-chip">{entry.sourceName}</span> : null}
-            </div>
+      <article className="detail-hero">
+        {entryImages[0]?.imageUrl ? (
+          <div className="detail-hero__media">
+            <img
+              src={entryImages[0].imageUrl}
+              alt={entry.title}
+              className="detail-hero__image"
+            />
+          </div>
+        ) : null}
 
-            <div className="detail-hero__top-actions">
-              {isEditing ? (
-                <>
-                  <button
-                    type="submit"
-                    form="entry-detail-form"
-                    className="button"
-                    disabled={isSubmitting || isDeleting || isEditTransitioning}
-                  >
-                    {isSubmitting ? 'Guardando...' : 'Guardar cambios'}
-                  </button>
-                  <button
-                    type="button"
-                    className="button--ghost"
-                    disabled={isSubmitting || isDeleting}
-                    onClick={() => {
-                      setIsEditing(false)
-                      setErrorMessage(null)
-                      setSuccessMessage(null)
-                    }}
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    className="button--danger"
-                    disabled={isSubmitting || isDeleting}
-                    onClick={() => {
-                      void handleDelete()
-                    }}
-                  >
-                    {isDeleting ? 'Borrando...' : 'Borrar entry'}
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  className="button"
-                  disabled={isSubmitting || isDeleting}
-                  onClick={() => {
-                    setIsEditing(true)
-                    setIsEditTransitioning(true)
-                    setErrorMessage(null)
-                    setSuccessMessage(null)
-                  }}
-                >
-                  Editar
-                </button>
-              )}
-            </div>
+        <div className="detail-hero__content">
+          <div className="detail-hero__eyebrow">
+            <span className="entry-card__type">
+              {entryTypeLabelMap[entry.type]}
+            </span>
+            <span className="detail-chip">Actualizado {formatDate(entry.updatedAt)}</span>
+            {entry.sourceName ? <span className="detail-chip">{entry.sourceName}</span> : null}
           </div>
 
           {entry.status === 'draft' ? (
@@ -802,9 +588,7 @@ export function EntryDetailPage() {
               <button
                 type="button"
                 className="button"
-                disabled={
-                  !isEditing || !canReanalyze || isReanalyzing || isSubmitting || isDeleting
-                }
+                disabled={!canReanalyze || isReanalyzing || isSubmitting || isDeleting}
                 onClick={() => {
                   void handleReanalyze()
                 }}
@@ -816,18 +600,12 @@ export function EntryDetailPage() {
                     : 'Limite de IA alcanzado'}
               </button>
               <span className="muted">
-                {aiAnalysisCount}/2 analisis usados
+                {aiRefreshCount}/2 reanalisis usados -solo tenes 2 chances por el momento-
               </span>
-              {!isEditing ? (
-                <span className="muted">Toca Editar para habilitar acciones.</span>
-              ) : null}
             </div>
           ) : null}
 
           <h1>{entry.title}</h1>
-          {entry.sourceName ? (
-            <p className="detail-hero__source">Visto en {entry.sourceName}</p>
-          ) : null}
           <p className="detail-hero__summary">
             {entry.summary || 'Todavia no agregaste un resumen para este item.'}
           </p>
@@ -866,71 +644,56 @@ export function EntryDetailPage() {
         </div>
 
         <EntryForm
-          formId="entry-detail-form"
           defaultValues={defaultValues}
           isSubmitting={isSubmitting}
           isDeleting={isDeleting}
-          isReadOnly={!isEditing}
-          showActions={false}
+          isStatusLocked={entry.status !== 'draft'}
           submitLabel="Guardar cambios"
           submitBusyLabel="Guardando..."
           errorMessage={errorMessage}
           successMessage={successMessage}
-          availableCategories={availableCategories}
-          selectedCategoryIds={selectedCategoryIds}
-          onToggleCategory={handleToggleCategory}
-          onOpenCreateCategory={() => {
-            setCategoryErrorMessage(null)
-            setIsCreateCategoryModalOpen(true)
-          }}
           onSubmit={handleUpdate}
           onDelete={handleDelete}
         />
       </article>
 
       <article className="card">
-        <div className="detail-card-header">
-          <div className="section-title">
-            <h2>Capturas asociadas</h2>
-            <p>Todas las imagenes que quedaron guardadas para esta entrada.</p>
-          </div>
-
-          {canReanalyze && entryImages.length < MAX_ENTRY_CAPTURES ? (
-            <div className="entry-form__actions">
-              <input
-                ref={uploadInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="sr-only"
-                onChange={(event) => {
-                  void handleAddCaptures(event)
-                }}
-              />
-              <button
-                type="button"
-                className="button--ghost"
-                disabled={!isEditing || isUploadingCaptures}
-                onClick={() => {
-                  uploadInputRef.current?.click()
-                }}
-              >
-                {isUploadingCaptures ? 'Agregando capturas...' : 'Agregar mas capturas'}
-              </button>
-            </div>
-          ) : null}
+        <div className="section-title">
+          <h2>Capturas asociadas</h2>
+          <p>Todas las imagenes que quedaron guardadas para esta entrada.</p>
         </div>
 
-        <p className="muted">
-          {entryImages.length}/{MAX_ENTRY_CAPTURES} capturas guardadas.
-        </p>
+        {canReanalyze ? (
+          <div className="entry-form__actions">
+            <input
+              ref={uploadInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="sr-only"
+              onChange={(event) => {
+                void handleAddCaptures(event)
+              }}
+            />
+            <button
+              type="button"
+              className="button--ghost"
+              disabled={isUploadingCaptures}
+              onClick={() => {
+                uploadInputRef.current?.click()
+              }}
+            >
+              {isUploadingCaptures ? 'Agregando capturas...' : 'Agregar mas capturas'}
+            </button>
+          </div>
+        ) : null}
 
         {entryImages.length === 0 ? (
           <p className="muted">Esta entry todavia no tiene capturas asociadas.</p>
         ) : (
-          <div className="capture-grid capture-grid--compact">
+          <div className="capture-grid">
             {entryImages.map((image) => (
-              <article key={image.id} className="capture-card capture-card--compact">
+              <article key={image.id} className="capture-card">
                 {image.imageUrl ? (
                   <img
                     src={image.imageUrl}

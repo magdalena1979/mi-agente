@@ -1,0 +1,107 @@
+:root {
+  font-family:
+    "SF Pro Display", "SF Pro Text", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.55;
+  font-weight: 400;
+  color: #1c1c1e;
+  background: #f2f2f7;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  --bg: #f2f2f7;
+  --surface: #ffffff;
+  --surface-muted: #f7f7fa;
+  --surface-soft: rgba(255, 255, 255, 0.72);
+  --input: #f2f2f7;
+  --text: #1c1c1e;
+  --text-soft: #3a3a3c;
+  --text-secondary: #8e8e93;
+  --primary: #0a84ff;
+  --primary-soft: rgba(10, 132, 255, 0.12);
+  --success: #34c759;
+  --success-soft: rgba(52, 199, 89, 0.14);
+  --warning: #ff9f0a;
+  --warning-soft: rgba(255, 159, 10, 0.14);
+  --danger: #ff453a;
+  --danger-soft: rgba(255, 69, 58, 0.14);
+  --shadow-soft: 0 2px 12px rgba(0, 0, 0, 0.05);
+  --shadow-floating: 0 24px 48px rgba(15, 23, 42, 0.12);
+  --radius-card: 20px;
+  --radius-control: 14px;
+  --radius-input: 12px;
+  --radius-pill: 999px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top, rgba(10, 132, 255, 0.06), transparent 30%),
+    #f2f2f7;
+  color: var(--text);
+}
+
+body,
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  border: 0;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+a:focus-visible {
+  outline: 2px solid rgba(10, 132, 255, 0.26);
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+#root {
+  min-height: 100vh;
+}

@@ -1,0 +1,55 @@
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(242, 242, 247, 0.82);
+  backdrop-filter: blur(18px);
+}
+
+.app-header__inner,
+.page {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.app-header__inner {
+  padding: 24px 24px 12px;
+}
+
+.app-shell main {
+  flex: 1;
+  padding: 0 24px 48px;
+}
+
+.page,
+.page--auth,
+.page--detail,
+.page--library,
+.page--new-entry {
+  gap: 24px;
+}
+
+.brand {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.brand__logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  object-fit: cover;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
+}
+
+.brand__copy {
+  gap: 6px;
+}

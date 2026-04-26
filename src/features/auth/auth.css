@@ -1,0 +1,35 @@
+.auth-hero__subcopy,
+.auth-story__intro,
+.auth-form__switch-copy {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.auth-form__switch-copy {
+  line-height: 1.65;
+}
+
+.auth-card--story {
+  background: var(--surface-muted);
+}
+
+.auth-inline-link {
+  display: inline;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--primary);
+  font-size: inherit;
+  font-weight: 700;
+}
+
+.auth-inline-link:hover {
+  color: var(--text);
+  transform: none;
+}
+
+.auth-step-card {
+  padding: 16px;
+  border-radius: 18px;
+  background: var(--surface-muted);
+}

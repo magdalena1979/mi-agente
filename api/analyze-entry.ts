@@ -15,6 +15,43 @@ function getRequestBody(req: VercelRequest) {
   return req.body
 }
 
+function summarizeValueForLog(value: unknown): unknown {
+  if (typeof value === 'string') {
+    return value.length > 280 ? `${value.slice(0, 280)}...` : value
+  }
+
+  if (Array.isArray(value)) {
+    return {
+      kind: 'array',
+      length: value.length,
+      sample: value.slice(0, 2).map((item) => summarizeValueForLog(item)),
+    }
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, nestedValue]) => [
+        key,
+        summarizeValueForLog(nestedValue),
+      ]),
+    )
+  }
+
+  return value
+}
+
+function getFilesSummary(req: VercelRequest) {
+  const requestWithFiles = req as VercelRequest & {
+    files?: unknown
+    file?: unknown
+  }
+
+  return {
+    files: summarizeValueForLog(requestWithFiles.files ?? null),
+    file: summarizeValueForLog(requestWithFiles.file ?? null),
+  }
+}
+
 function getErrorStatus(error: unknown) {
   if (error instanceof AnalyzeEntryValidationError) {
     return 400
@@ -47,11 +84,15 @@ export default async function handler(
 
   try {
     const requestBody = getRequestBody(req)
+    const filesSummary = getFilesSummary(req)
 
     console.info('[analyze-entry] request', {
       requestId,
       contentLength: req.headers['content-length'] ?? null,
+      contentType: req.headers['content-type'] ?? null,
       userAgent: req.headers['user-agent'] ?? null,
+      body: summarizeValueForLog(requestBody),
+      ...filesSummary,
       payload: getAnalyzePayloadDebugSummary(requestBody),
     })
 
@@ -62,10 +103,15 @@ export default async function handler(
 
     return res.status(200).json(result)
   } catch (error) {
+    const filesSummary = getFilesSummary(req)
+
     console.error('[analyze-entry] failed', {
       requestId,
       contentLength: req.headers['content-length'] ?? null,
+      contentType: req.headers['content-type'] ?? null,
       userAgent: req.headers['user-agent'] ?? null,
+      body: summarizeValueForLog(req.body),
+      ...filesSummary,
       error:
         error instanceof Error
           ? {
