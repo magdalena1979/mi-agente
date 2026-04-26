@@ -50,10 +50,11 @@
   gap: 12px;
   padding: 16px;
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.96);
+  background: rgba(27, 32, 38, 0.98);
   box-shadow: var(--shadow-floating);
   backdrop-filter: blur(24px);
   z-index: 30;
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .notification-panel__header {

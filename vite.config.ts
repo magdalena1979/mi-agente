@@ -72,35 +72,31 @@ export default defineConfig(({ mode }) => {
         },
         includeAssets: [
           'logo.png',
-          'favicon_io/favicon.ico',
-          'favicon_io/favicon-16x16.png',
-          'favicon_io/favicon-32x32.png',
-          'favicon_io/apple-touch-icon.png',
         ],
         manifest: {
           name: 'Refind',
           short_name: 'Refind',
           description:
             'PWA para guardar y compartir cosas que te interesan desde capturas, links, OCR e IA.',
-          theme_color: '#F2F2F7',
-          background_color: '#F2F2F7',
+          theme_color: '#14171B',
+          background_color: '#14171B',
           display: 'standalone',
           start_url: '/',
           orientation: 'portrait',
           icons: [
             {
-              src: '/favicon_io/android-chrome-192x192.png',
+              src: '/logo.png',
               sizes: '192x192',
               type: 'image/png',
             },
             {
-              src: '/favicon_io/android-chrome-512x512.png',
+              src: '/logo.png',
               sizes: '512x512',
               type: 'image/png',
             },
             {
               src: '/logo.png',
-              sizes: '1254x1254',
+              sizes: '512x512',
               type: 'image/png',
               purpose: 'any',
             },

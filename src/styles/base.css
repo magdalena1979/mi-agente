@@ -3,30 +3,30 @@
     "SF Pro Display", "SF Pro Text", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   line-height: 1.55;
   font-weight: 400;
-  color: #1c1c1e;
-  background: #f2f2f7;
+  color: #f3f4f6;
+  background: #14171b;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  --bg: #f2f2f7;
-  --surface: #ffffff;
-  --surface-muted: #f7f7fa;
-  --surface-soft: rgba(255, 255, 255, 0.72);
-  --input: #f2f2f7;
-  --text: #1c1c1e;
-  --text-soft: #3a3a3c;
-  --text-secondary: #8e8e93;
-  --primary: #0a84ff;
-  --primary-soft: rgba(10, 132, 255, 0.12);
-  --success: #34c759;
-  --success-soft: rgba(52, 199, 89, 0.14);
-  --warning: #ff9f0a;
-  --warning-soft: rgba(255, 159, 10, 0.14);
-  --danger: #ff453a;
-  --danger-soft: rgba(255, 69, 58, 0.14);
-  --shadow-soft: 0 2px 12px rgba(0, 0, 0, 0.05);
-  --shadow-floating: 0 24px 48px rgba(15, 23, 42, 0.12);
+  --bg: #14171b;
+  --surface: #1b2026;
+  --surface-muted: #222933;
+  --surface-soft: rgba(27, 32, 38, 0.84);
+  --input: #20262e;
+  --text: #f3f4f6;
+  --text-soft: #d6d9de;
+  --text-secondary: #97a0ab;
+  --primary: #d7dde6;
+  --primary-soft: rgba(215, 221, 230, 0.14);
+  --success: #7dd3a4;
+  --success-soft: rgba(125, 211, 164, 0.16);
+  --warning: #d9b36c;
+  --warning-soft: rgba(217, 179, 108, 0.16);
+  --danger: #f08b8b;
+  --danger-soft: rgba(240, 139, 139, 0.16);
+  --shadow-soft: 0 18px 38px rgba(0, 0, 0, 0.22);
+  --shadow-floating: 0 28px 64px rgba(0, 0, 0, 0.34);
   --radius-card: 20px;
   --radius-control: 14px;
   --radius-input: 12px;
@@ -47,8 +47,8 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background:
-    radial-gradient(circle at top, rgba(10, 132, 255, 0.06), transparent 30%),
-    #f2f2f7;
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.06), transparent 22%),
+    linear-gradient(180deg, #1a1f26 0%, #14171b 42%, #111418 100%);
   color: var(--text);
 }
 
@@ -86,7 +86,7 @@ input:focus-visible,
 textarea:focus-visible,
 select:focus-visible,
 a:focus-visible {
-  outline: 2px solid rgba(10, 132, 255, 0.26);
+  outline: 2px solid rgba(215, 221, 230, 0.32);
   outline-offset: 2px;
 }
 

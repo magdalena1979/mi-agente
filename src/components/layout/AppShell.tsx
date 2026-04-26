@@ -20,16 +20,12 @@ export function AppShell() {
         <div className="app-header__inner">
           <div className="app-header__top">
             <div className="brand">
-              <img
-                src="/logo.png"
-                alt="Refind"
-                className="brand__logo"
-              />
+              <img src="/logo.png" alt="Refind" className="brand__logo" />
 
               <div className="brand__copy">
                 <h1 className="brand__title">Refind</h1>
                 <p className="brand__subtitle">
-                  Guarda, ordena y comparte hallazgos en un espacio simple.
+                  Archivo personal para guardar, ordenar y compartir hallazgos con criterio.
                 </p>
               </div>
             </div>

@@ -126,18 +126,19 @@
 }
 
 .button {
-  background: var(--primary);
-  color: #ffffff;
-  box-shadow: 0 8px 20px rgba(10, 132, 255, 0.18);
+  background: #d9dee6;
+  color: #111418;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
 }
 
 .button--ghost,
 .filter-chip,
 .library-tab,
 .auth-toggle__item {
-  background: #e5e7eb;
+  background: rgba(255, 255, 255, 0.06);
   color: var(--text-soft);
   box-shadow: none;
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .button--danger,
@@ -211,14 +212,14 @@
 .library-row__type,
 .detail-chip {
   background: var(--primary-soft);
-  color: var(--primary);
+  color: #eef2f7;
 }
 
 .library-row__meta-pill,
 .share-person-card__status,
 .capture-status--idle,
 .status-pill--warning {
-  background: rgba(142, 142, 147, 0.14);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--text-secondary);
 }
 
@@ -273,8 +274,9 @@
   width: fit-content;
   padding: 4px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.04);
   box-shadow: var(--shadow-soft);
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .library-tab,
@@ -319,15 +321,15 @@
 .form-field input:focus,
 .form-field textarea:focus,
 .form-field select:focus {
-  box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.26);
-  background: #ececf4;
+  box-shadow: 0 0 0 2px rgba(215, 221, 230, 0.18);
+  background: #262d36;
   outline: none;
 }
 
 .search-field input::placeholder,
 .form-field input::placeholder,
 .form-field textarea::placeholder {
-  color: #b0b0b6;
+  color: #6f7985;
 }
 
 .form-field {
@@ -426,14 +428,14 @@
 }
 
 .filter-chip--active {
-  background: var(--primary);
-  color: #ffffff;
-  box-shadow: 0 8px 18px rgba(10, 132, 255, 0.16);
+  background: #d9dee6;
+  color: #111418;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.16);
 }
 
 .filter-chip--add {
-  background: rgba(10, 132, 255, 0.08);
-  color: var(--primary);
+  background: rgba(255, 255, 255, 0.04);
+  color: #eef2f7;
 }
 
 .library-header,
@@ -464,7 +466,7 @@
 
 .feedback--success {
   background: var(--success-soft);
-  color: #1f8f40;
+  color: #c7f3d9;
 }
 
 .empty-state {
@@ -479,7 +481,7 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(28, 28, 30, 0.16);
+  background: rgba(7, 9, 12, 0.46);
   backdrop-filter: blur(20px);
 }
 
@@ -487,7 +489,8 @@
   width: min(100%, 34rem);
   display: grid;
   gap: 20px;
-  background: rgba(255, 255, 255, 0.98);
+  background: rgba(27, 32, 38, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 @media (min-width: 640px) {
