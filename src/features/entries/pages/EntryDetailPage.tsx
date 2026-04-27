@@ -39,6 +39,17 @@ const entryTypeLabelMap = entryTypeOptions.reduce<Record<EntryType, string>>(
   {} as Record<EntryType, string>,
 )
 
+function formatSourceTypeLabel(sourceType: EntryRecord['sourceType']) {
+  switch (sourceType) {
+    case 'link':
+      return 'Link'
+    case 'manual':
+      return 'Manual'
+    default:
+      return 'Captura'
+  }
+}
+
 function formatDate(date: string) {
   return new Intl.DateTimeFormat('es-AR', {
     dateStyle: 'medium',
@@ -84,6 +95,8 @@ function getHeroHighlights(entry: EntryRecord) {
     highlights.push({ label, value: normalizedValue })
   }
 
+  pushIfPresent('Origen', formatSourceTypeLabel(entry.sourceType))
+
   switch (entry.type) {
     case 'movie':
     case 'series':
@@ -126,9 +139,32 @@ function getHeroHighlights(entry: EntryRecord) {
       break
   }
 
-  pushIfPresent('Subio', entry.uploaderName || entry.uploaderEmail)
+  pushIfPresent('Estado', entry.status === 'draft' ? 'Borrador' : 'Revisado')
 
-  return highlights.slice(0, 6)
+  return highlights.slice(0, 8)
+}
+
+function getHeroSupportFacts(entry: EntryRecord) {
+  const facts: Array<{ label: string; value: string; href?: string }> = []
+
+  const pushIfPresent = (label: string, value?: string | null, href?: string) => {
+    const normalizedValue = value?.trim()
+
+    if (!normalizedValue) {
+      return
+    }
+
+    facts.push({ label, value: normalizedValue, href })
+  }
+
+  pushIfPresent('Link original', entry.sourceUrl, entry.sourceUrl ?? undefined)
+  pushIfPresent('Nota', entry.metadata.note)
+
+  if (entry.type === 'recipe') {
+    pushIfPresent('Ingredientes', entry.metadata.ingredientsText)
+  }
+
+  return facts
 }
 
 function BackLink() {
@@ -154,6 +190,7 @@ export function EntryDetailPage() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [isReanalyzing, setIsReanalyzing] = useState(false)
   const [isUploadingCaptures, setIsUploadingCaptures] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
@@ -211,8 +248,13 @@ export function EntryDetailPage() {
     () => (entry ? getHeroHighlights(entry) : []),
     [entry],
   )
+  const heroSupportFacts = useMemo(
+    () => (entry ? getHeroSupportFacts(entry) : []),
+    [entry],
+  )
 
   const aiRefreshCount = entry ? getAiRefreshCount(entry) : 0
+  const canEditEntry = Boolean(entry && entry.status === 'draft')
   const canReanalyze = Boolean(entry && entry.status === 'draft' && aiRefreshCount < 2)
 
   async function createAnalysisImageFromSavedCapture(image: EntryImageRecord) {
@@ -311,6 +353,7 @@ export function EntryDetailPage() {
       })
 
       setEntry(updatedEntry)
+      setIsEditing(false)
       setSuccessMessage('Los cambios se guardaron correctamente.')
     } catch (error) {
       setErrorMessage(
@@ -560,46 +603,48 @@ export function EntryDetailPage() {
       <BackLink />
 
       <article className="detail-hero">
-        {entryImages[0]?.imageUrl ? (
-          <div className="detail-hero__media">
-            <img
-              src={entryImages[0].imageUrl}
-              alt={entry.title}
-              className="detail-hero__image"
-            />
-          </div>
-        ) : null}
-
         <div className="detail-hero__content">
-          <div className="detail-hero__eyebrow">
-            <span className="entry-card__type">
-              {entryTypeLabelMap[entry.type]}
-            </span>
-            <span className="detail-chip">Actualizado {formatDate(entry.updatedAt)}</span>
-            {entry.sourceName ? <span className="detail-chip">{entry.sourceName}</span> : null}
-          </div>
-
-          {entry.status === 'draft' ? (
-            <div className="detail-hero__inline-actions">
-              <button
-                type="button"
-                className="button"
-                disabled={!canReanalyze || isReanalyzing || isSubmitting || isDeleting}
-                onClick={() => {
-                  void handleReanalyze()
-                }}
-              >
-                {isReanalyzing
-                  ? 'Actualizando con IA...'
-                  : canReanalyze
-                    ? 'Volver a analizar con IA'
-                    : 'Limite de IA alcanzado'}
-              </button>
-              <span className="muted">
-                {aiRefreshCount}/2 reanalisis usados -solo tenes 2 chances por el momento-
+          <div className="detail-hero__toprow">
+            <div className="detail-hero__eyebrow">
+              <span className="entry-card__type">
+                {entryTypeLabelMap[entry.type]}
               </span>
+              <span className="detail-chip">Actualizado {formatDate(entry.updatedAt)}</span>
+              {entry.sourceName ? <span className="detail-chip">{entry.sourceName}</span> : null}
             </div>
-          ) : null}
+
+            <div className="detail-hero__top-actions">
+              {canEditEntry ? (
+                isEditing ? (
+                  <button
+                    type="button"
+                    className="button--ghost"
+                    onClick={() => {
+                      setIsEditing(false)
+                      setErrorMessage(null)
+                      setSuccessMessage(null)
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={() => {
+                      setIsEditing(true)
+                      setErrorMessage(null)
+                      setSuccessMessage(null)
+                    }}
+                  >
+                    Editar
+                  </button>
+                )
+              ) : (
+                <span className="detail-chip">Solo lectura</span>
+              )}
+            </div>
+          </div>
 
           <h1>{entry.title}</h1>
           <p className="detail-hero__summary">
@@ -629,21 +674,87 @@ export function EntryDetailPage() {
               ))}
             </div>
           ) : null}
+
+          {heroSupportFacts.length > 0 ? (
+            <div className="detail-facts">
+              {heroSupportFacts.map((fact) => (
+                <article key={`${fact.label}-${fact.value}`} className="detail-fact">
+                  <span>{fact.label}</span>
+                  {fact.href ? (
+                    <a href={fact.href} target="_blank" rel="noreferrer">
+                      {fact.value}
+                    </a>
+                  ) : (
+                    <strong>{fact.value}</strong>
+                  )}
+                </article>
+              ))}
+            </div>
+          ) : null}
+
+          {entry.status === 'draft' ? (
+            <div className="detail-hero__inline-actions detail-hero__inline-actions--bottom">
+              <button
+                type="button"
+                className="button"
+                disabled={!canReanalyze || isReanalyzing || isSubmitting || isDeleting}
+                onClick={() => {
+                  void handleReanalyze()
+                }}
+              >
+                {isReanalyzing
+                  ? 'Actualizando con IA...'
+                  : canReanalyze
+                    ? 'Volver a analizar con IA'
+                    : 'Limite de IA alcanzado'}
+              </button>
+              <span className="muted">
+                {aiRefreshCount}/2 reanalisis usados -solo tenes 2 chances por el momento-
+              </span>
+            </div>
+          ) : null}
         </div>
+
+        {entryImages[0]?.imageUrl ? (
+          <div className="detail-hero__media">
+            <img
+              src={entryImages[0].imageUrl}
+              alt={entry.title}
+              className="detail-hero__image"
+            />
+          </div>
+        ) : null}
 
       </article>
 
       <article className="card">
         <div className="section-title">
-          <h2>Editar item</h2>
-          <p>Ajusta los datos y guarda cuando este listo.</p>
+          <h2>Texto leido por el sistema</h2>
+          <p>Esto es lo que recuperamos desde las capturas para completar la ficha.</p>
+        </div>
+
+        <div className="detail-readonly detail-readonly--ocr">
+          {entry.extractedText.trim() || 'Todavia no hay texto extraido para esta entry.'}
+        </div>
+      </article>
+
+      <article className="card">
+        <div className="section-title">
+          <h2>Editar entrada</h2>
+          <p>
+            {isEditing
+              ? 'Ajusta los datos y guarda cuando este listo.'
+              : 'La ficha queda protegida hasta que actives Editar.'}
+          </p>
         </div>
 
         <EntryForm
           defaultValues={defaultValues}
           isSubmitting={isSubmitting}
           isDeleting={isDeleting}
+          isReadOnly={!isEditing}
           isStatusLocked={entry.status !== 'draft'}
+          showActions={isEditing}
           submitLabel="Guardar cambios"
           submitBusyLabel="Guardando..."
           errorMessage={errorMessage}

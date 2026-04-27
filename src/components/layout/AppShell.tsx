@@ -5,6 +5,13 @@ import { env } from '@/lib/env'
 
 export function AppShell() {
   const { user, isLoading, signOut } = useAuth()
+  const headerStatusText = isLoading
+    ? 'Verificando sesion...'
+    : user?.email
+      ? `Sesion iniciada - ${user.email}`
+      : env.isSupabaseConfigured
+        ? null
+        : 'Configura Supabase para continuar'
 
   async function handleSignOut() {
     try {
@@ -15,7 +22,7 @@ export function AppShell() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={user ? 'app-shell app-shell--authenticated' : 'app-shell'}>
       <header className="app-header">
         <div className="app-header__inner">
           <div className="app-header__top">
@@ -25,7 +32,7 @@ export function AppShell() {
               <div className="brand__copy">
                 <h1 className="brand__title">Refind</h1>
                 <p className="brand__subtitle">
-                  Archivo personal para guardar, ordenar y compartir hallazgos con criterio.
+                  Archivo personal para guardar y ordenar hallazgos con criterio.
                 </p>
               </div>
             </div>
@@ -34,7 +41,7 @@ export function AppShell() {
               {user ? (
                 <button
                   type="button"
-                  className="button--ghost"
+                  className="button--ghost app-header__logout"
                   onClick={() => {
                     void handleSignOut()
                   }}
@@ -43,15 +50,11 @@ export function AppShell() {
                 </button>
               ) : null}
 
-              <p className="header-meta__text header-meta__text--stacked">
-                {isLoading
-                  ? 'Verificando sesion...'
-                  : user?.email
-                    ? `Sesion iniciada - ${user.email}`
-                    : env.isSupabaseConfigured
-                      ? 'Listo para iniciar sesion'
-                      : 'Configura Supabase para continuar'}
-              </p>
+              {headerStatusText ? (
+                <p className="header-meta__text header-meta__text--stacked">
+                  {headerStatusText}
+                </p>
+              ) : null}
             </div>
           </div>
         </div>

@@ -33,3 +33,9 @@
   border-radius: 18px;
   background: var(--surface-muted);
 }
+
+@media (max-width: 639px) {
+  .auth-hero {
+    display: none;
+  }
+}

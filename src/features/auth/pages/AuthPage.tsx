@@ -173,9 +173,7 @@ export function AuthPage() {
         </p>
         {!invitedEmail ? (
           <p className="auth-hero__subcopy">
-            La idea no es solo tener tu archivo personal: tambien poder compartirlo
-            con otra persona con la que tenes gustos, referencias y hallazgos en
-            comun.
+            Ordena lo que te interesa en un solo lugar y recuperalo despues sin depender de mensajes o notas sueltas.
           </p>
         ) : null}
       </div>
@@ -187,7 +185,7 @@ export function AuthPage() {
             <p>
               {mode === authModes.signIn
                 ? 'Entra a tu archivo y retoma tus capturas, links y hallazgos.'
-                : 'Abre tu cuenta y arma tu archivo personal para guardar y compartir lo que te interesa.'}
+                : 'Abre tu cuenta y arma tu archivo personal para guardar lo que te interesa.'}
             </p>
           </div>
 
@@ -312,7 +310,7 @@ export function AuthPage() {
             <span className="eyebrow">En 4 pasos</span>
             <h2>Como funciona</h2>
             <p className="auth-story__intro">
-              Un recorrido simple para pasar de una captura a algo util y compartible.
+              Un recorrido simple para pasar de una captura a algo util y facil de recuperar.
             </p>
           </div>
 
@@ -321,7 +319,7 @@ export function AuthPage() {
               'Cargas capturas o links que te queres guardar.',
               'OCR + IA entienden de que se trata y proponen una ficha.',
               'Revisas, editas y lo convertis en algo facil de volver a encontrar.',
-              'Si queres, lo compartis con alguien con quien tenes cosas en comun.',
+              'Lo guardas en tu archivo para tenerlo ordenado y a mano.',
             ].map((step, index) => (
               <article className="auth-step-card" key={step}>
                 <div className="step">

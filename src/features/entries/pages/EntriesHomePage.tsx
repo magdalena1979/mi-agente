@@ -8,28 +8,21 @@ import {
   listEntryUserCategories,
   listUserCategories,
 } from '@/features/categories/categories-api'
+import { getSuggestedCategoryKeyForEntryType } from '@/features/categories/category-mapping'
 import { CreateUserCategoryModal } from '@/features/categories/components/CreateUserCategoryModal'
 import { ManageUserCategoriesModal } from '@/features/categories/components/ManageUserCategoriesModal'
 import { UserCategorySetupModal } from '@/features/categories/components/UserCategorySetupModal'
 import { useAuth } from '@/features/auth/auth-context'
 import { DEFAULT_USER_CATEGORY_NAMES, type UserCategoryRecord } from '@/types/categories'
 import { entryTypeOptions } from '@/features/entries/config/entry-type-config'
-import { deleteEntry, listEntries } from '@/features/entries/entries-api'
-import { NotificationsBell } from '@/features/sharing/components/NotificationsBell'
-import { ShareEntriesModal } from '@/features/sharing/components/ShareEntriesModal'
-import {
-  listSentEntriesShareInvitations,
-  listEntryUserMarks,
-  revokeEntriesShare,
-  upsertEntryUserMark,
-} from '@/features/sharing/sharing-api'
+import { deleteEntry, listEntries, updateEntry } from '@/features/entries/entries-api'
+import { listEntryUserMarks, upsertEntryUserMark } from '@/features/sharing/sharing-api'
 import type { EntryRecord, EntryType, EntryUserMarkRecord } from '@/types/entries'
-import type { InvitationRecord } from '@/types/lists'
-
-type HomeDesktopTab = 'entries' | 'sharing'
 
 const PAGE_SIZE = 20
 const CATEGORY_SETUP_STORAGE_PREFIX = 'user-category-setup-completed:'
+const MOBILE_SWIPE_ACTIONS_WIDTH = 216
+const MOBILE_SWIPE_OPEN_THRESHOLD = 88
 
 const typeLabelMap = entryTypeOptions.reduce<Record<EntryType, string>>(
   (labels, option) => {
@@ -145,20 +138,16 @@ export function EntriesHomePage() {
   const suggestedCategoryNames = useMemo(() => [...DEFAULT_USER_CATEGORY_NAMES], [])
   const [entries, setEntries] = useState<EntryRecord[]>([])
   const [entryMarksById, setEntryMarksById] = useState<Record<string, EntryUserMarkRecord>>({})
-  const [sharedInvitations, setSharedInvitations] = useState<InvitationRecord[]>([])
   const [userCategories, setUserCategories] = useState<UserCategoryRecord[]>([])
   const [entryCategoryIdsByEntryId, setEntryCategoryIdsByEntryId] = useState<Record<string, string[]>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [markingId, setMarkingId] = useState<string | null>(null)
-  const [revokingInvitationId, setRevokingInvitationId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [activeCategoryId, setActiveCategoryId] = useState<'all' | string>('all')
   const [showUncheckedOnly, setShowUncheckedOnly] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
-  const [isShareOpen, setIsShareOpen] = useState(false)
-  const [activeDesktopTab, setActiveDesktopTab] = useState<HomeDesktopTab>('entries')
   const [isCreateCategoryModalOpen, setIsCreateCategoryModalOpen] = useState(false)
   const [isSavingCategory, setIsSavingCategory] = useState(false)
   const [isManageCategoriesModalOpen, setIsManageCategoriesModalOpen] = useState(false)
@@ -166,6 +155,21 @@ export function EntriesHomePage() {
   const [categoryErrorMessage, setCategoryErrorMessage] = useState<string | null>(null)
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false)
   const [isSavingCategorySetup, setIsSavingCategorySetup] = useState(false)
+  const [actionMessage, setActionMessage] = useState<string | null>(null)
+  const [archivingId, setArchivingId] = useState<string | null>(null)
+  const [openSwipeEntryId, setOpenSwipeEntryId] = useState<string | null>(null)
+  const [draggingSwipeEntryId, setDraggingSwipeEntryId] = useState<string | null>(null)
+  const [dragStartX, setDragStartX] = useState<number | null>(null)
+  const [dragStartOffsetX, setDragStartOffsetX] = useState(0)
+  const [dragOffsetX, setDragOffsetX] = useState(0)
+  const userCategoriesById = useMemo(
+    () =>
+      userCategories.reduce<Record<string, UserCategoryRecord>>((accumulator, category) => {
+        accumulator[category.id] = category
+        return accumulator
+      }, {}),
+    [userCategories],
+  )
 
   useEffect(() => {
     let ignore = false
@@ -334,48 +338,60 @@ export function EntriesHomePage() {
     }
   }, [entries, user])
 
-  useEffect(() => {
-    let ignore = false
-
-    async function loadSharedPeople() {
-      if (!user) {
-        if (!ignore) {
-          setSharedInvitations([])
-        }
-        return
-      }
-
-      try {
-        const nextInvitations = await listSentEntriesShareInvitations(user.id)
-
-        if (!ignore) {
-          setSharedInvitations(nextInvitations)
-        }
-      } catch (error) {
-        if (!ignore) {
-          setErrorMessage(
-            error instanceof Error
-              ? error.message
-              : 'No pudimos cargar con quien estas compartiendo.',
-          )
-        }
-      }
-    }
-
-    void loadSharedPeople()
-
-    return () => {
-      ignore = true
-    }
-  }, [user])
+  // Compartido desactivado temporalmente en el frontend.
+  // useEffect(() => {
+  //   let ignore = false
+  //
+  //   async function loadSharedPeople() {
+  //     if (!user) {
+  //       if (!ignore) {
+  //         setSharedInvitations([])
+  //       }
+  //       return
+  //     }
+  //
+  //     try {
+  //       const nextInvitations = await listSentEntriesShareInvitations(user.id)
+  //
+  //       if (!ignore) {
+  //         setSharedInvitations(nextInvitations)
+  //       }
+  //     } catch (error) {
+  //       if (!ignore) {
+  //         setErrorMessage(
+  //           error instanceof Error
+  //             ? error.message
+  //             : 'No pudimos cargar con quien estas compartiendo.',
+  //         )
+  //       }
+  //     }
+  //   }
+  //
+  //   void loadSharedPeople()
+  //
+  //   return () => {
+  //     ignore = true
+  //   }
+  // }, [user])
 
   const filteredEntries = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase()
+    const activeCategory =
+      activeCategoryId === 'all' ? null : userCategoriesById[activeCategoryId] ?? null
 
     return entries.filter((entry) => {
+      if (entry.status === 'archived') {
+        return false
+      }
+
+      const assignedCategoryIds = entryCategoryIdsByEntryId[entry.id] ?? []
+      const matchesSuggestedTypeCategory =
+        activeCategory !== null &&
+        activeCategory.normalizedName === getSuggestedCategoryKeyForEntryType(entry.type)
       const matchesCategory =
         activeCategoryId === 'all' ||
-        (entryCategoryIdsByEntryId[entry.id] ?? []).includes(activeCategoryId)
+        assignedCategoryIds.includes(activeCategoryId) ||
+        matchesSuggestedTypeCategory
       const isChecked = entryMarksById[entry.id]?.isChecked ?? false
       const matchesMark = !showUncheckedOnly || !isChecked
       const matchesQuery =
@@ -384,7 +400,15 @@ export function EntriesHomePage() {
 
       return matchesCategory && matchesMark && matchesQuery
     })
-  }, [activeCategoryId, entries, entryCategoryIdsByEntryId, entryMarksById, searchQuery, showUncheckedOnly])
+  }, [
+    activeCategoryId,
+    entries,
+    entryCategoryIdsByEntryId,
+    entryMarksById,
+    searchQuery,
+    showUncheckedOnly,
+    userCategoriesById,
+  ])
 
   useEffect(() => {
     if (
@@ -410,13 +434,6 @@ export function EntriesHomePage() {
 
   const totalPages = Math.max(1, Math.ceil(filteredEntries.length / PAGE_SIZE))
   const safeCurrentPage = Math.min(currentPage, totalPages)
-  const acceptedShares = sharedInvitations.filter(
-    (invitation) => invitation.status === 'accepted',
-  )
-  const pendingShares = sharedInvitations.filter(
-    (invitation) => invitation.status === 'pending',
-  )
-
   const paginatedEntries = useMemo(() => {
     const startIndex = (safeCurrentPage - 1) * PAGE_SIZE
     return filteredEntries.slice(startIndex, startIndex + PAGE_SIZE)
@@ -433,12 +450,14 @@ export function EntriesHomePage() {
 
     setDeletingId(entry.id)
     setErrorMessage(null)
+    setActionMessage(null)
 
     try {
       await deleteEntry(entry.id)
       setEntries((currentEntries) =>
         currentEntries.filter((currentEntry) => currentEntry.id !== entry.id),
       )
+      setOpenSwipeEntryId(null)
     } catch (error) {
       setErrorMessage(
         error instanceof Error
@@ -480,40 +499,128 @@ export function EntriesHomePage() {
     }
   }
 
-  async function handleRevokeShare(invitation: InvitationRecord) {
-    const actionLabel =
-      invitation.status === 'accepted'
-        ? `dejar de compartir con ${invitation.email}`
-        : `cancelar la invitacion para ${invitation.email}`
-
-    const confirmed = window.confirm(
-      `Vas a ${actionLabel}. Esta accion no elimina la cuenta de la otra persona.`,
-    )
-
-    if (!confirmed) {
+  async function handleArchive(entry: EntryRecord) {
+    if (!user) {
       return
     }
 
-    setRevokingInvitationId(invitation.id)
+    setArchivingId(entry.id)
     setErrorMessage(null)
+    setActionMessage(null)
 
     try {
-      await revokeEntriesShare(invitation.id)
-      setSharedInvitations((currentInvitations) =>
-        currentInvitations.filter(
-          (currentInvitation) => currentInvitation.id !== invitation.id,
-        ),
+      await updateEntry(entry.id, {
+        userId: user.id,
+        type: entry.type,
+        title: entry.title,
+        summary: entry.summary,
+        sourceType: entry.sourceType,
+        sourceName: entry.sourceName,
+        sourceUrl: entry.sourceUrl,
+        status: 'archived',
+        aiTags: entry.aiTags,
+        extractedText: entry.extractedText,
+        metadata: entry.metadata,
+        uploaderName: entry.uploaderName,
+        uploaderEmail: entry.uploaderEmail,
+      })
+
+      setEntries((currentEntries) =>
+        currentEntries.filter((currentEntry) => currentEntry.id !== entry.id),
       )
+      setOpenSwipeEntryId(null)
+      setActionMessage('La entrada se archivo correctamente.')
     } catch (error) {
       setErrorMessage(
         error instanceof Error
           ? error.message
-          : 'No pudimos actualizar esta relacion compartida.',
+          : 'No pudimos archivar esta entrada.',
       )
     } finally {
-      setRevokingInvitationId(null)
+      setArchivingId(null)
     }
   }
+
+  function handleShare(entry: EntryRecord) {
+    setErrorMessage(null)
+    setActionMessage(`Compartir "${entry.title}" estara disponible pronto.`)
+    setOpenSwipeEntryId(null)
+  }
+
+  function handleSwipeStart(entryId: string, clientX: number) {
+    setDraggingSwipeEntryId(entryId)
+    setDragStartX(clientX)
+    const nextStartOffset =
+      openSwipeEntryId === entryId ? MOBILE_SWIPE_ACTIONS_WIDTH : 0
+    setDragStartOffsetX(nextStartOffset)
+    setDragOffsetX(nextStartOffset)
+    if (openSwipeEntryId && openSwipeEntryId !== entryId) {
+      setOpenSwipeEntryId(null)
+    }
+  }
+
+  function handleSwipeMove(clientX: number) {
+    if (!draggingSwipeEntryId || dragStartX === null) {
+      return
+    }
+
+    const nextOffset = Math.max(
+      0,
+      Math.min(MOBILE_SWIPE_ACTIONS_WIDTH, clientX - dragStartX + dragStartOffsetX),
+    )
+
+    setDragOffsetX(nextOffset)
+  }
+
+  function handleSwipeEnd() {
+    if (!draggingSwipeEntryId) {
+      return
+    }
+
+    setOpenSwipeEntryId(
+      dragOffsetX >= MOBILE_SWIPE_OPEN_THRESHOLD ? draggingSwipeEntryId : null,
+    )
+    setDraggingSwipeEntryId(null)
+    setDragStartX(null)
+    setDragStartOffsetX(0)
+    setDragOffsetX(0)
+  }
+
+  // Compartido desactivado temporalmente en el frontend.
+  // async function handleRevokeShare(invitation: InvitationRecord) {
+  //   const actionLabel =
+  //     invitation.status === 'accepted'
+  //       ? `dejar de compartir con ${invitation.email}`
+  //       : `cancelar la invitacion para ${invitation.email}`
+  //
+  //   const confirmed = window.confirm(
+  //     `Vas a ${actionLabel}. Esta accion no elimina la cuenta de la otra persona.`,
+  //   )
+  //
+  //   if (!confirmed) {
+  //     return
+  //   }
+  //
+  //   setRevokingInvitationId(invitation.id)
+  //   setErrorMessage(null)
+  //
+  //   try {
+  //     await revokeEntriesShare(invitation.id)
+  //     setSharedInvitations((currentInvitations) =>
+  //       currentInvitations.filter(
+  //         (currentInvitation) => currentInvitation.id !== invitation.id,
+  //       ),
+  //     )
+  //   } catch (error) {
+  //     setErrorMessage(
+  //       error instanceof Error
+  //         ? error.message
+  //         : 'No pudimos actualizar esta relacion compartida.',
+  //     )
+  //   } finally {
+  //     setRevokingInvitationId(null)
+  //   }
+  // }
 
   async function refreshUserCategories() {
     if (!user) {
@@ -697,69 +804,36 @@ export function EntriesHomePage() {
 
       <header className="library-header">
         <div className="library-header__main">
-          <div className="section-title">
-            <h1>{activeDesktopTab === 'entries' ? 'Biblioteca' : 'Compartido'}</h1>
-            <p>
-              {activeDesktopTab === 'entries'
-                ? 'Tus capturas, links y recomendaciones en una lista clara y fácil de explorar.'
-                : 'Invitaciones activas y accesos compartidos en un solo lugar.'}
-            </p>
+          <div className="section-title library-header__copy">
+            <h1>Biblioteca</h1>
+            <p>Tus capturas, links y recomendaciones en una lista clara y facil de explorar.</p>
           </div>
 
+          {/* Compartido desactivado temporalmente en el frontend.
           <div className="library-tabs" aria-label="Secciones principales">
-            <button
-              type="button"
-              className={
-                activeDesktopTab === 'entries'
-                  ? 'library-tab library-tab--active'
-                  : 'library-tab'
-              }
-              onClick={() => {
-                setActiveDesktopTab('entries')
-              }}
-            >
-              Archivo
-            </button>
-            <button
-              type="button"
-              className={
-                activeDesktopTab === 'sharing'
-                  ? 'library-tab library-tab--active'
-                  : 'library-tab'
-              }
-              onClick={() => {
-                setActiveDesktopTab('sharing')
-              }}
-            >
-              Share with
-            </button>
+            ...
           </div>
+          */}
         </div>
 
+        <Link
+          className="button library-header__center-cta"
+          to="/entries/new"
+          aria-label="Agregar algo"
+        >
+          <span aria-hidden="true">+</span>
+        </Link>
+
+        {/* Compartido desactivado temporalmente en el frontend.
         <div className="library-header__actions">
           <NotificationsBell />
-
-          {user ? (
-            <button
-              type="button"
-              className="button--ghost library-share-trigger"
-              onClick={() => {
-                setIsShareOpen(true)
-              }}
-            >
-              Share with
-            </button>
-          ) : null}
-
-          <Link className="button library-header__cta" to="/entries/new">
-            Agregar algo
-          </Link>
         </div>
+        */}
       </header>
 
       {errorMessage ? <p className="feedback feedback--error">{errorMessage}</p> : null}
+      {actionMessage ? <p className="feedback feedback--success">{actionMessage}</p> : null}
 
-      {activeDesktopTab === 'entries' ? (
         <>
           <section className="library-toolbar">
             <label className="search-field">
@@ -775,7 +849,28 @@ export function EntriesHomePage() {
               />
             </label>
 
-            <div className="filter-row" aria-label="Filtrar por subcategoria personal">
+            <label className="form-field library-filter-select">
+              <span>Categoria</span>
+              <select
+                value={activeCategoryId}
+                onChange={(event) => {
+                  setActiveCategoryId(event.target.value)
+                  setCurrentPage(1)
+                }}
+              >
+                <option value="all">Todas las categorias</option>
+                {userCategories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div
+              className="filter-row filter-row--desktop"
+              aria-label="Filtrar por categoria personal o tipo detectado"
+            >
               <button
                 type="button"
                 className={
@@ -824,7 +919,7 @@ export function EntriesHomePage() {
             <div className="library-toolbar__actions">
               <button
                 type="button"
-                className="button--ghost"
+                className="button--ghost library-toolbar__manage-categories"
                 onClick={() => {
                   setCategoryErrorMessage(null)
                   setIsManageCategoriesModalOpen(true)
@@ -832,6 +927,15 @@ export function EntriesHomePage() {
               >
                 Editar categorias
               </button>
+
+              <Link
+                className="button library-toolbar__add"
+                to="/entries/new"
+                aria-label="Agregar algo"
+              >
+                <span className="library-toolbar__add-mobile" aria-hidden="true">+</span>
+                <span className="library-toolbar__add-desktop">Agregar algo</span>
+              </Link>
             </div>
 
             <label className="entry-mark-toggle">
@@ -866,7 +970,7 @@ export function EntriesHomePage() {
           ) : filteredEntries.length === 0 ? (
             <article className="card card--flat empty-state">
               <h2>No encontramos resultados</h2>
-              <p>Proba otro texto o cambia el filtro de tipo.</p>
+              <p>Proba otro texto o cambia la categoria del filtro.</p>
             </article>
           ) : (
             <section className="library-table" aria-label="Items guardados">
@@ -883,10 +987,77 @@ export function EntriesHomePage() {
                   const rowMeta = getRowMeta(entry)
                   const uploaderLabel = getUploaderLabel(entry, user?.id)
                   const isChecked = entryMarksById[entry.id]?.isChecked ?? false
+                  const isSwipeOpen = openSwipeEntryId === entry.id
+                  const swipeOffset =
+                    draggingSwipeEntryId === entry.id
+                      ? dragOffsetX
+                      : isSwipeOpen
+                        ? MOBILE_SWIPE_ACTIONS_WIDTH
+                        : 0
+                  const isSwipeBusy =
+                    deletingId === entry.id || archivingId === entry.id
 
                   return (
-                    <article className="library-row" key={entry.id}>
-                      <Link className="library-row__main" to={`/entries/${entry.id}`}>
+                    <div className="library-row-swipe-shell" key={entry.id}>
+                      <div className="library-row-swipe-actions" aria-hidden={!isSwipeOpen}>
+                        <button
+                          type="button"
+                          className="library-row-swipe-action library-row-swipe-action--archive"
+                          disabled={isSwipeBusy}
+                          onClick={() => {
+                            void handleArchive(entry)
+                          }}
+                        >
+                          {archivingId === entry.id ? 'Archivando...' : 'Archivar'}
+                        </button>
+                        <button
+                          type="button"
+                          className="library-row-swipe-action library-row-swipe-action--delete"
+                          disabled={isSwipeBusy}
+                          onClick={() => {
+                            void handleDelete(entry)
+                          }}
+                        >
+                          {deletingId === entry.id ? 'Borrando...' : 'Eliminar'}
+                        </button>
+                        <button
+                          type="button"
+                          className="library-row-swipe-action library-row-swipe-action--share"
+                          disabled={isSwipeBusy}
+                          onClick={() => {
+                            handleShare(entry)
+                          }}
+                        >
+                          Compartir
+                        </button>
+                      </div>
+
+                    <article
+                      className={isSwipeOpen ? 'library-row library-row--swiped' : 'library-row'}
+                      style={{ transform: `translateX(${swipeOffset}px)` }}
+                      onTouchStart={(event) => {
+                        handleSwipeStart(entry.id, event.touches[0].clientX)
+                      }}
+                      onTouchMove={(event) => {
+                        handleSwipeMove(event.touches[0].clientX)
+                      }}
+                      onTouchEnd={handleSwipeEnd}
+                      onTouchCancel={handleSwipeEnd}
+                    >
+                      <Link
+                        className="library-row__main"
+                        to={`/entries/${entry.id}`}
+                        onClick={(event) => {
+                          if (isSwipeOpen || draggingSwipeEntryId === entry.id) {
+                            event.preventDefault()
+                            setOpenSwipeEntryId(null)
+                            setDraggingSwipeEntryId(null)
+                            setDragStartX(null)
+                            setDragStartOffsetX(0)
+                            setDragOffsetX(0)
+                          }
+                        }}
+                      >
                         <div className="library-row__content">
                           <div className="library-row__meta-group">
                             <span className="library-row__type">
@@ -957,6 +1128,7 @@ export function EntriesHomePage() {
                         </button>
                       </div>
                     </article>
+                    </div>
                   )
                 })}
               </div>
@@ -993,93 +1165,12 @@ export function EntriesHomePage() {
             </section>
           )}
         </>
-      ) : user ? (
-        <section className="share-summary" aria-label="Personas con acceso compartido">
-          <div className="share-summary__header">
-            <div className="section-title">
-              <h2>Compartiendo con</h2>
-              <p>Desde aca podes invitar, revisar y cortar accesos compartidos.</p>
-            </div>
-
-            <div className="share-summary__header-actions">
-              <span>
-                {acceptedShares.length} activas | {pendingShares.length} pendientes
-              </span>
-              <button
-                type="button"
-                className="button"
-                onClick={() => {
-                  setIsShareOpen(true)
-                }}
-              >
-                Share with
-              </button>
-            </div>
-          </div>
-
-          {sharedInvitations.length === 0 ? (
-            <p className="share-summary__empty">
-              Todavia no compartiste tus entradas con nadie.
-            </p>
-          ) : (
-            <div className="share-summary__list">
-              {sharedInvitations.map((invitation) => (
-                <article className="share-person-card" key={invitation.id}>
-                  <div className="share-person-card__copy">
-                    <strong>{invitation.email}</strong>
-                    <span>
-                      {invitation.status === 'accepted'
-                        ? 'Acceso activo'
-                        : 'Invitacion pendiente'}
-                    </span>
-                  </div>
-
-                  <div className="share-person-card__actions">
-                    <span
-                      className={
-                        invitation.status === 'accepted'
-                          ? 'share-person-card__status share-person-card__status--active'
-                          : 'share-person-card__status'
-                      }
-                    >
-                      {invitation.status === 'accepted' ? 'Activo' : 'Pendiente'}
-                    </span>
-
-                    <button
-                      type="button"
-                      className="button--subtle-danger"
-                      disabled={revokingInvitationId === invitation.id}
-                      onClick={() => {
-                        void handleRevokeShare(invitation)
-                      }}
-                    >
-                      {revokingInvitationId === invitation.id
-                        ? 'Actualizando...'
-                        : invitation.status === 'accepted'
-                          ? 'Dejar de compartir'
-                          : 'Cancelar invitacion'}
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
-      ) : null}
-
-      {user ? (
-        <ShareEntriesModal
-          isOpen={isShareOpen}
-          currentUserId={user.id}
-          onSuccess={async () => {
-            const nextInvitations = await listSentEntriesShareInvitations(user.id)
-            setSharedInvitations(nextInvitations)
-          }}
-          onClose={() => {
-            setIsShareOpen(false)
-          }}
-        />
-      ) : null}
+      {/* Compartido desactivado temporalmente en el frontend.
+      <section className="share-summary" aria-label="Personas con acceso compartido">
+        ...
+      </section>
+      <ShareEntriesModal ... />
+      */}
     </section>
   )
 }

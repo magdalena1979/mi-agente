@@ -224,9 +224,9 @@ export function EntryForm({
         </label>
 
         <div className="form-field">
-          <span>Subcategorias personales</span>
+          <span>Categorias para filtrar</span>
           <p className="form-helper">
-            Funcionan como tags tuyos para organizar mejor el archivo sin cambiar el tipo de la entry.
+            El tipo lo detecta la IA como libro, serie o receta. Estas categorias son tuyas y se usan en los filtros de la biblioteca. Si coincide con una categoria base, la dejamos sugerida.
           </p>
 
           <div className="category-filter-grid category-filter-grid--form">

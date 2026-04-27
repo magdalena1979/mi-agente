@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 
 import { analyzeEntry } from '@/features/ai/analyze-entry'
 import { useAuth } from '@/features/auth/auth-context'
+import { findSuggestedCategoryForEntryType } from '@/features/categories/category-mapping'
 import { createUserCategory, listUserCategories, replaceEntryUserCategories } from '@/features/categories/categories-api'
 import { CreateUserCategoryModal } from '@/features/categories/components/CreateUserCategoryModal'
 import { EntryForm } from '@/features/entries/components/EntryForm'
@@ -187,9 +188,14 @@ export function NewEntryPage() {
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([])
   const [isCreateCategoryModalOpen, setIsCreateCategoryModalOpen] = useState(false)
   const [isSavingCategory, setIsSavingCategory] = useState(false)
+  const [isReviewEditing, setIsReviewEditing] = useState(false)
   const [categoryErrorMessage, setCategoryErrorMessage] = useState<string | null>(null)
 
   const typeLabel = entryTypeLabelMap[formDefaults.type] ?? 'Entrada'
+  const suggestedCategory = useMemo(
+    () => findSuggestedCategoryForEntryType(availableCategories, formDefaults.type),
+    [availableCategories, formDefaults.type],
+  )
   const heroHighlights = useMemo(
     () => getHeroHighlights(formDefaults, pendingImages, analysisConfidence),
     [analysisConfidence, formDefaults, pendingImages],
@@ -213,7 +219,7 @@ export function NewEntryPage() {
   const heroSummary =
     formDefaults.summary.trim() ||
     (formDefaults.sourceType === 'link'
-      ? 'Pega un link, completa la ficha y guardalo en tu archivo compartido.'
+      ? 'Pega un link, completa la ficha y guardalo en tu archivo.'
       : pendingImages.length > 0
         ? 'Subi hasta dos capturas, corre la IA y revisa la ficha antes de guardarla.'
         : 'Subi capturas o usa un link y arma una ficha con el mismo estilo visual del detalle.')
@@ -275,6 +281,24 @@ export function NewEntryPage() {
       ignore = true
     }
   }, [user])
+
+  useEffect(() => {
+    if (!suggestedCategory) {
+      return
+    }
+
+    setSelectedCategoryIds((currentIds) =>
+      currentIds.includes(suggestedCategory.id)
+        ? currentIds
+        : [suggestedCategory.id, ...currentIds],
+    )
+  }, [suggestedCategory])
+
+  useEffect(() => {
+    if (activeStep !== 4) {
+      setIsReviewEditing(false)
+    }
+  }, [activeStep])
 
   useEffect(() => {
     return () => {
@@ -1038,6 +1062,11 @@ export function NewEntryPage() {
                 <p className="detail-hero__source">Fuente detectada: {formDefaults.sourceName}</p>
               ) : null}
               <p className="detail-hero__summary">{heroSummary}</p>
+              {suggestedCategory ? (
+                <p className="detail-hero__source">
+                  Categoria sugerida para filtrar: {suggestedCategory.name}
+                </p>
+              ) : null}
             </div>
 
             {heroHighlights.length > 0 ? (
@@ -1061,6 +1090,41 @@ export function NewEntryPage() {
                     {tag}
                   </span>
                 ))}
+              </div>
+            ) : null}
+
+            {combinedExtractedText ? (
+              <div className="new-entry-support-block">
+                <div className="section-title new-entry-support-block__header">
+                  <h3>Texto leido por el sistema</h3>
+                  <p>Esto es lo que recuperamos del OCR antes de guardar.</p>
+                </div>
+                <div className="detail-readonly detail-readonly--ocr">
+                  {combinedExtractedText}
+                </div>
+              </div>
+            ) : null}
+
+            {pendingImages.length > 0 ? (
+              <div className="new-entry-support-block">
+                <div className="section-title new-entry-support-block__header">
+                  <h3>Capturas cargadas</h3>
+                  <p>Quedan abajo para revisar sin tapar la informacion principal.</p>
+                </div>
+                <div className="capture-grid capture-grid--compact">
+                  {pendingImages.map((image) => (
+                    <article className="capture-card" key={image.id}>
+                      <img
+                        src={image.previewUrl}
+                        alt={`Captura ${image.position + 1}`}
+                        className="capture-card__image"
+                      />
+                      <div className="capture-card__content">
+                        <strong>Captura {image.position + 1}</strong>
+                      </div>
+                    </article>
+                  ))}
+                </div>
               </div>
             ) : null}
           </div>
@@ -1095,22 +1159,50 @@ export function NewEntryPage() {
 
       {activeStep === 4 ? (
       <article className="card new-entry-step-card">
-        <div className="new-entry-step-card__header">
+        <div className="new-entry-step-card__header new-entry-step-card__header--split">
           <div className="section-title">
             <span className="eyebrow">Paso 4</span>
             <h2>Ajusta y guarda</h2>
-            <p>Si hace falta, corrige la ficha y despues guardala en tu archivo.</p>
+            <p>
+              {isReviewEditing
+                ? 'Corrige la ficha y guarda cuando este lista.'
+                : 'La ficha queda en modo lectura hasta que actives Editar ficha.'}
+            </p>
           </div>
 
-          <button
-            type="submit"
-            form="entry-new-form"
-            className="button"
-            disabled={isSubmitting || !canSubmitEntry}
-          >
-            {isSubmitting ? 'Guardando...' : 'Guardar en tu archivo'}
-          </button>
+          {isReviewEditing ? (
+            <button
+              type="submit"
+              form="entry-new-form"
+              className="button"
+              disabled={isSubmitting || !canSubmitEntry}
+            >
+              {isSubmitting ? 'Guardando...' : 'Guardar en tu archivo'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="button"
+              onClick={() => {
+                setIsReviewEditing(true)
+              }}
+            >
+              Editar ficha
+            </button>
+          )}
         </div>
+
+        {combinedExtractedText ? (
+          <div className="new-entry-support-block">
+            <div className="section-title new-entry-support-block__header">
+              <h3>Texto leido por el sistema</h3>
+              <p>Usalo como referencia antes de tocar la ficha.</p>
+            </div>
+            <div className="detail-readonly detail-readonly--ocr">
+              {combinedExtractedText}
+            </div>
+          </div>
+        ) : null}
 
         <EntryForm
           formId="entry-new-form"
@@ -1121,6 +1213,7 @@ export function NewEntryPage() {
           canSubmit={canSubmitEntry}
           submitDisabledReason={submitDisabledReason}
           showActions={false}
+          isReadOnly={!isReviewEditing}
           errorMessage={saveErrorMessage}
           successMessage={saveSuccessMessage}
           availableCategories={availableCategories}
@@ -1132,6 +1225,30 @@ export function NewEntryPage() {
           }}
           onSubmit={handleSave}
         />
+
+        {pendingImages.length > 0 ? (
+          <div className="new-entry-support-block">
+            <div className="section-title new-entry-support-block__header">
+              <h3>Capturas cargadas</h3>
+              <p>Se mantienen abajo para consultar mientras editas.</p>
+            </div>
+            <div className="capture-grid capture-grid--compact">
+              {pendingImages.map((image) => (
+                <article className="capture-card" key={image.id}>
+                  <img
+                    src={image.previewUrl}
+                    alt={`Captura ${image.position + 1}`}
+                    className="capture-card__image"
+                  />
+                  <div className="capture-card__content">
+                    <strong>Captura {image.position + 1}</strong>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         <div className="new-entry-step-card__footer">
           <button
             type="button"
@@ -1142,6 +1259,19 @@ export function NewEntryPage() {
           >
             Volver
           </button>
+          {isReviewEditing ? (
+            <button
+              type="button"
+              className="button--ghost"
+              onClick={() => {
+                setIsReviewEditing(false)
+                setSaveErrorMessage(null)
+                setSaveSuccessMessage(null)
+              }}
+            >
+              Cancelar edicion
+            </button>
+          ) : null}
         </div>
       </article>
       ) : null}
