@@ -177,7 +177,7 @@ export function AcceptInvitationPage() {
         {!isLoading && invitation && !user ? (
           <p className="feedback feedback--success">
             Para aceptar esta invitacion primero crea tu cuenta o inicia sesion con
-            contrasena. Despues volveras automaticamente a este link.
+            contraseña. Despues volveras automaticamente a este link.
           </p>
         ) : null}
 

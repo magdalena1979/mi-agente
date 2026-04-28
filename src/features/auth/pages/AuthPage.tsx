@@ -12,7 +12,7 @@ const authModes = {
 
 const baseSchema = z.object({
   email: z.email('Ingresa un email valido.'),
-  password: z.string().min(6, 'La contrasena debe tener al menos 6 caracteres.'),
+  password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres.'),
   confirmPassword: z.string().optional(),
 })
 
@@ -79,7 +79,7 @@ export function AuthPage() {
 
     if (!email) {
       form.setError('email', {
-        message: 'Ingresa tu email para recuperar la contrasena.',
+        message: 'Ingresa tu email para recuperar la contraseña.',
       })
       return
     }
@@ -103,13 +103,13 @@ export function AuthPage() {
         `${window.location.origin}/reset-password`,
       )
       setFeedback(
-        'Te enviamos un email para restablecer tu contrasena. Revisa tu casilla y sigue el link.',
+        'Te enviamos un email para restablecer tu contraseña. Revisa tu casilla y sigue el link.',
       )
     } catch (error) {
       setErrorMessage(
         error instanceof Error
           ? error.message
-          : 'No pudimos iniciar la recuperacion de contrasena.',
+          : 'No pudimos iniciar la recuperacion de contraseña.',
       )
     } finally {
       setIsRecoveringPassword(false)
@@ -122,7 +122,7 @@ export function AuthPage() {
 
     if (mode === authModes.signUp && values.password !== values.confirmPassword) {
       form.setError('confirmPassword', {
-        message: 'Las contrasenas no coinciden.',
+        message: 'Las contraseñas no coinciden.',
       })
       return
     }
@@ -206,7 +206,7 @@ export function AuthPage() {
             </label>
 
             <label className="form-field">
-              <span>Contrasena</span>
+              <span>Contraseña</span>
               <input
                 type="password"
                 autoComplete={
@@ -224,11 +224,11 @@ export function AuthPage() {
 
             {mode === authModes.signUp ? (
               <label className="form-field">
-                <span>Repetir contrasena</span>
+                <span>Repetir contraseña</span>
                 <input
                   type="password"
                   autoComplete="new-password"
-                  placeholder="Repite la contrasena"
+                  placeholder="Repite la contraseña"
                   {...form.register('confirmPassword')}
                 />
                 {form.formState.errors.confirmPassword ? (
@@ -264,7 +264,7 @@ export function AuthPage() {
                     void handlePasswordReset()
                   }}
                 >
-                  {isRecoveringPassword ? 'Enviando...' : 'Olvide mi contrasena'}
+                  {isRecoveringPassword ? 'Enviando...' : 'Olvide mi contraseña'}
                 </button>
               ) : null}
             </div>

@@ -25,6 +25,10 @@
   --warning-soft: rgba(217, 179, 108, 0.16);
   --danger: #f08b8b;
   --danger-soft: rgba(240, 139, 139, 0.16);
+  --magenta: #E02680;
+  --magenta-hover: #FF4FA3;
+  --magenta-soft: rgba(224, 38, 128, 0.1);
+  --magenta-glow: rgba(224, 38, 128, 0.3);
   --shadow-soft: 0 18px 38px rgba(0, 0, 0, 0.22);
   --shadow-floating: 0 28px 64px rgba(0, 0, 0, 0.34);
   --radius-card: 20px;
@@ -64,8 +68,12 @@ img {
 }
 
 a {
-  color: inherit;
+  color: var(--magenta);
   text-decoration: none;
+}
+
+a:hover {
+  color: var(--magenta-hover);
 }
 
 button,
@@ -84,7 +92,7 @@ input:focus-visible,
 textarea:focus-visible,
 select:focus-visible,
 a:focus-visible {
-  outline: 2px solid rgba(215, 221, 230, 0.32);
+  outline: 2px solid rgba(224, 38, 128, 0.32);
   outline-offset: 2px;
 }
 

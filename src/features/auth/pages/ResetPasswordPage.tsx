@@ -6,7 +6,7 @@ import { useAuth } from '@/features/auth/auth-context'
 function getErrorMessage(error: unknown) {
   return error instanceof Error
     ? error.message
-    : 'No pudimos actualizar la contrasena.'
+    : 'No pudimos actualizar la contraseña.'
 }
 
 export function ResetPasswordPage() {
@@ -24,12 +24,12 @@ export function ResetPasswordPage() {
     setSuccessMessage(null)
 
     if (password.trim().length < 6) {
-      setErrorMessage('La contrasena debe tener al menos 6 caracteres.')
+      setErrorMessage('La contraseña debe tener al menos 6 caracteres.')
       return
     }
 
     if (password !== confirmPassword) {
-      setErrorMessage('Las contrasenas no coinciden.')
+      setErrorMessage('Las contraseñas no coinciden.')
       return
     }
 
@@ -37,7 +37,7 @@ export function ResetPasswordPage() {
 
     try {
       await updatePassword(password)
-      setSuccessMessage('Tu contrasena se actualizo correctamente.')
+      setSuccessMessage('Tu contraseña se actualizo correctamente.')
       setTimeout(() => {
         navigate('/', { replace: true })
       }, 1200)
@@ -53,7 +53,7 @@ export function ResetPasswordPage() {
       <section className="page">
         <article className="card">
           <h2>Preparando recuperacion</h2>
-          <p>Estamos verificando tu link para cambiar la contrasena.</p>
+          <p>Estamos verificando tu link para cambiar la contraseña.</p>
         </article>
       </section>
     )
@@ -64,7 +64,7 @@ export function ResetPasswordPage() {
       <section className="page">
         <article className="card">
           <div className="section-title">
-            <h1>Restablecer contrasena</h1>
+            <h1>Restablecer contraseña</h1>
             <p>Este link ya no es valido o expiro. Pide uno nuevo para continuar.</p>
           </div>
 
@@ -82,13 +82,13 @@ export function ResetPasswordPage() {
     <section className="page">
       <article className="card">
         <div className="section-title">
-          <h1>Nueva contrasena</h1>
-          <p>Elige una contrasena nueva para tu cuenta.</p>
+          <h1>Nueva contraseña</h1>
+          <p>Elige una contraseña nueva para tu cuenta.</p>
         </div>
 
         <form className="auth-form" onSubmit={handleSubmit}>
           <label className="form-field">
-            <span>Nueva contrasena</span>
+            <span>Nueva contraseña</span>
             <input
               type="password"
               autoComplete="new-password"
@@ -101,11 +101,11 @@ export function ResetPasswordPage() {
           </label>
 
           <label className="form-field">
-            <span>Repetir contrasena</span>
+            <span>Repetir contraseña</span>
             <input
               type="password"
               autoComplete="new-password"
-              placeholder="Repite la contrasena"
+              placeholder="Repite la contraseña"
               value={confirmPassword}
               onChange={(event) => {
                 setConfirmPassword(event.target.value)
@@ -120,7 +120,7 @@ export function ResetPasswordPage() {
 
           <div className="entry-form__actions">
             <button type="submit" className="button" disabled={isSubmitting}>
-              {isSubmitting ? 'Guardando...' : 'Actualizar contrasena'}
+              {isSubmitting ? 'Guardando...' : 'Actualizar contraseña'}
             </button>
 
             <Link className="button--ghost" to="/auth">
