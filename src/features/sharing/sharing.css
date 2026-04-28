@@ -98,3 +98,22 @@
   color: var(--text-secondary);
   font-size: 0.84rem;
 }
+
+@media (max-width: 639px) {
+  .app-mobile-footer .notification-bell .icon-button {
+    width: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    border-radius: 14px;
+  }
+
+  .app-mobile-footer .notification-bell .notification-panel {
+    top: auto;
+    left: 50%;
+    right: auto;
+    bottom: calc(100% + 0.75rem);
+    transform: translateX(-50%);
+    width: min(88vw, 21rem);
+  }
+}

@@ -34,7 +34,7 @@ type OcrImageResult = {
 }
 
 const MAX_ENTRY_CAPTURES = 2
-type NewEntryStep = 1 | 2 | 3 | 4
+type NewEntryStep = 1 | 2 | 3
 const entryTypeLabelMap = entryTypeOptions.reduce<Record<string, string>>(
   (labels, option) => {
     labels[option.type] = option.label
@@ -52,6 +52,15 @@ function reindexImages(images: PendingUploadImage[]) {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback
+}
+
+function isValidUrl(value: string) {
+  try {
+    new URL(value)
+    return true
+  } catch {
+    return false
+  }
 }
 
 function inferSourceNameFromLink(link: string) {
@@ -188,8 +197,9 @@ export function NewEntryPage() {
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([])
   const [isCreateCategoryModalOpen, setIsCreateCategoryModalOpen] = useState(false)
   const [isSavingCategory, setIsSavingCategory] = useState(false)
-  const [isReviewEditing, setIsReviewEditing] = useState(false)
   const [categoryErrorMessage, setCategoryErrorMessage] = useState<string | null>(null)
+  const normalizedLinkInput = linkInput.trim()
+  const hasValidLinkInput = isValidUrl(normalizedLinkInput)
 
   const typeLabel = entryTypeLabelMap[formDefaults.type] ?? 'Entrada'
   const suggestedCategory = useMemo(
@@ -203,7 +213,9 @@ export function NewEntryPage() {
   const heroTags = useMemo(() => parseTags(formDefaults.tagsText), [formDefaults.tagsText])
   const hasPreparedLink =
     formDefaults.sourceType === 'link' && formDefaults.sourceUrl.trim().length > 0
-  const hasSourceReady = pendingImages.length > 0 || hasPreparedLink
+  const isUsingImages = pendingImages.length > 0
+  const isUsingLink = normalizedLinkInput.length > 0 || hasPreparedLink
+  const hasSourceReady = pendingImages.length > 0 || hasPreparedLink || hasValidLinkInput
   const hasAnalysisResult = analysisRunCount > 0
   const hasReviewContent =
     hasSourceReady ||
@@ -219,13 +231,12 @@ export function NewEntryPage() {
   const heroSummary =
     formDefaults.summary.trim() ||
     (formDefaults.sourceType === 'link'
-      ? 'Pega un link, completa la ficha y guardalo en tu archivo.'
+      ? 'Pega un link, deja que la IA cargue la ficha y revisala antes de guardarla.'
       : pendingImages.length > 0
         ? 'Subi hasta dos capturas, corre la IA y revisa la ficha antes de guardarla.'
         : 'Subi capturas o usa un link y arma una ficha con el mismo estilo visual del detalle.')
   const canAccessStep2 = hasSourceReady
   const canAccessStep3 = hasSourceReady || hasAnalysisResult
-  const canAccessStep4 = hasReviewContent
 
   useEffect(() => {
     previewUrlsRef.current = pendingImages.map((image) => image.previewUrl)
@@ -247,10 +258,7 @@ export function NewEntryPage() {
       return
     }
 
-    if (activeStep === 4 && !canAccessStep4) {
-      setActiveStep(canAccessStep3 ? 3 : canAccessStep2 ? 2 : 1)
-    }
-  }, [activeStep, canAccessStep2, canAccessStep3, canAccessStep4, hasSourceReady])
+  }, [activeStep, canAccessStep2, canAccessStep3, hasSourceReady])
 
   useEffect(() => {
     let ignore = false
@@ -293,12 +301,6 @@ export function NewEntryPage() {
         : [suggestedCategory.id, ...currentIds],
     )
   }, [suggestedCategory])
-
-  useEffect(() => {
-    if (activeStep !== 4) {
-      setIsReviewEditing(false)
-    }
-  }, [activeStep])
 
   useEffect(() => {
     return () => {
@@ -348,7 +350,7 @@ export function NewEntryPage() {
     setAnalysisConfidence(null)
     setAnalysisRunCount(0)
     setAnalysisErrorMessage(null)
-    setLinkSuccessMessage('Link listo. Completa los datos abajo y guarda la entrada.')
+    setLinkSuccessMessage('Link listo. Ahora podes cargar datos con IA.')
     setSaveErrorMessage(null)
     setSaveSuccessMessage(null)
     setFormDefaults(
@@ -400,6 +402,8 @@ export function NewEntryPage() {
       return reindexImages(nextImages)
     })
 
+    setLinkInput('')
+    setLinkSuccessMessage(null)
     resetAnalysisState()
     setActiveStep(2)
   }
@@ -501,8 +505,8 @@ export function NewEntryPage() {
       return
     }
 
-    if (pendingImages.length === 0) {
-      setAnalysisErrorMessage('Subi al menos una captura para analizar.')
+    if (pendingImages.length === 0 && !hasPreparedLink) {
+      setAnalysisErrorMessage('Subi al menos una captura o pega un link para analizar.')
       return
     }
 
@@ -514,111 +518,130 @@ export function NewEntryPage() {
     setAnalysisConfidence(null)
 
     const snapshot = [...pendingImages]
+    const sourceContext = {
+      sourceType: hasPreparedLink ? 'link' : 'screenshot',
+      sourceName: formDefaults.sourceName,
+      sourceUrl: formDefaults.sourceUrl,
+    } as const
     const imagesSelectedForAi = snapshot
       .slice()
       .sort((leftImage, rightImage) => leftImage.position - rightImage.position)
       .slice(0, 1)
     const ocrTextByImage: OcrImageResult[] = []
     const imagesForAnalysis = []
+    let nextCombinedExtractedText = ''
 
-    for (const image of snapshot) {
-      setPendingImages((currentImages) =>
-        currentImages.map((currentImage) =>
-          currentImage.id === image.id
-            ? {
-                ...currentImage,
-                ocrStatus: 'processing',
-                ocrErrorMessage: null,
-              }
-            : currentImage,
-        ),
-      )
+    if (snapshot.length > 0) {
+      for (const image of snapshot) {
+        setPendingImages((currentImages) =>
+          currentImages.map((currentImage) =>
+            currentImage.id === image.id
+              ? {
+                  ...currentImage,
+                  ocrStatus: 'processing',
+                  ocrErrorMessage: null,
+                }
+              : currentImage,
+          ),
+        )
 
-      let ocrText = ''
-      let ocrStatus: PendingUploadImage['ocrStatus'] = 'success'
-      let ocrErrorMessage: string | null = null
+        let ocrText = ''
+        let ocrStatus: PendingUploadImage['ocrStatus'] = 'success'
+        let ocrErrorMessage: string | null = null
 
-      try {
-        ocrText = await extractTextFromImage(image.file)
-      } catch (error) {
-        ocrStatus = 'error'
-        ocrErrorMessage = getErrorMessage(
-          error,
-          `No pudimos leer texto de ${image.file.name}.`,
+        try {
+          ocrText = await extractTextFromImage(image.file)
+        } catch (error) {
+          ocrStatus = 'error'
+          ocrErrorMessage = getErrorMessage(
+            error,
+            `No pudimos leer texto de ${image.file.name}.`,
+          )
+        }
+
+        if (imagesSelectedForAi.some((selectedImage) => selectedImage.id === image.id)) {
+          try {
+            const dataUrl = await createAnalysisImageDataUrl(
+              image.file,
+              getAnalysisImageResizeOptions('low-cost'),
+            )
+
+            imagesForAnalysis.push({
+              name: image.file.name,
+              type: image.file.type || 'image/jpeg',
+              position: image.position,
+              dataUrl,
+            })
+          } catch (error) {
+            if (!ocrErrorMessage) {
+              ocrErrorMessage = getErrorMessage(
+                error,
+                `No pudimos preparar ${image.file.name} para IA.`,
+              )
+            }
+
+            if (!ocrText) {
+              ocrStatus = 'error'
+            }
+          }
+        }
+
+        ocrTextByImage.push({
+          name: image.file.name,
+          position: image.position,
+          text: ocrText,
+          status: ocrStatus === 'success' ? 'success' : 'error',
+          errorMessage: ocrErrorMessage ?? '',
+        })
+
+        setPendingImages((currentImages) =>
+          currentImages.map((currentImage) =>
+            currentImage.id === image.id
+              ? {
+                  ...currentImage,
+                  ocrText,
+                  ocrStatus,
+                  ocrErrorMessage,
+                }
+              : currentImage,
+          ),
         )
       }
 
-      if (imagesSelectedForAi.some((selectedImage) => selectedImage.id === image.id)) {
-        try {
-          const dataUrl = await createAnalysisImageDataUrl(
-            image.file,
-            getAnalysisImageResizeOptions('low-cost'),
-          )
+      nextCombinedExtractedText = ocrTextByImage
+        .map((imageResult) => imageResult.text.trim())
+        .filter(Boolean)
+        .join('\n\n')
 
-          imagesForAnalysis.push({
-            name: image.file.name,
-            type: image.file.type || 'image/jpeg',
-            position: image.position,
-            dataUrl,
-          })
-        } catch (error) {
-          if (!ocrErrorMessage) {
-            ocrErrorMessage = getErrorMessage(
-              error,
-              `No pudimos preparar ${image.file.name} para IA.`,
-            )
-          }
-
-          if (!ocrText) {
-            ocrStatus = 'error'
-          }
-        }
+      if (imagesForAnalysis.length === 0) {
+        setIsAnalyzing(false)
+        setAnalysisErrorMessage('No pudimos preparar ninguna imagen para analisis.')
+        return
       }
-
-      ocrTextByImage.push({
-        name: image.file.name,
-        position: image.position,
-        text: ocrText,
-        status: ocrStatus === 'success' ? 'success' : 'error',
-        errorMessage: ocrErrorMessage ?? '',
-      })
-
-      setPendingImages((currentImages) =>
-        currentImages.map((currentImage) =>
-          currentImage.id === image.id
-            ? {
-                ...currentImage,
-                ocrText,
-                ocrStatus,
-                ocrErrorMessage,
-              }
-            : currentImage,
-        ),
-      )
     }
-
-    const nextCombinedExtractedText = ocrTextByImage
-      .map((imageResult) => imageResult.text.trim())
-      .filter(Boolean)
-      .join('\n\n')
 
     setCombinedExtractedText(nextCombinedExtractedText)
-    setFormDefaults(getEntryFormValuesFromAnalysis(null, nextCombinedExtractedText))
-
-    if (imagesForAnalysis.length === 0) {
-      setIsAnalyzing(false)
-      setAnalysisErrorMessage('No pudimos preparar ninguna imagen para analisis.')
-      return
-    }
+    setFormDefaults(
+      getEntryFormValuesFromAnalysis(null, nextCombinedExtractedText, sourceContext),
+    )
 
     try {
       const analysis = await analyzeEntry({
         combinedExtractedText: nextCombinedExtractedText,
         images: imagesForAnalysis,
         ocrTextByImage,
+        sourceType: sourceContext.sourceType,
+        sourceName: sourceContext.sourceName,
+        sourceUrl: sourceContext.sourceUrl,
       })
 
-      setFormDefaults(getEntryFormValuesFromAnalysis(analysis, nextCombinedExtractedText))
+      setFormDefaults(
+        getEntryFormValuesFromAnalysis(
+          analysis,
+          nextCombinedExtractedText,
+          sourceContext,
+        ),
+      )
       setAnalysisDetectedType(analysis.detectedType)
       setAnalysisConfidence(analysis.confidence)
       setAnalysisRunCount((currentCount) => currentCount + 1)
@@ -627,7 +650,7 @@ export function NewEntryPage() {
       setAnalysisErrorMessage(
         getErrorMessage(
           error,
-          'No pudimos analizar las capturas con IA. Podes revisar y guardar manualmente.',
+          'No pudimos analizar esta entrada con IA. Podes revisar y guardar manualmente.',
         ),
       )
     } finally {
@@ -710,7 +733,7 @@ export function NewEntryPage() {
       ? 'Subi al menos una captura para continuar.'
       : null
   const canSubmitEntry = formDefaults.sourceType === 'link' || pendingImages.length > 0
-  const canAnalyzeWithAi = pendingImages.length > 0 && analysisRunCount < 2
+  const canAnalyzeWithAi = hasSourceReady && analysisRunCount < 2
   const stepItems: Array<{
     step: NewEntryStep
     title: string
@@ -731,15 +754,9 @@ export function NewEntryPage() {
     },
     {
       step: 3,
-      title: 'Revisa',
-      state: activeStep === 3 ? 'active' : activeStep > 3 ? 'done' : canAccessStep3 ? 'idle' : 'idle',
-      disabled: !canAccessStep3,
-    },
-    {
-      step: 4,
       title: 'Guarda',
-      state: activeStep === 4 ? 'active' : canAccessStep4 && isSubmitting ? 'done' : canAccessStep4 ? 'idle' : 'idle',
-      disabled: !canAccessStep4,
+      state: activeStep === 3 ? 'active' : canAccessStep3 ? 'idle' : 'idle',
+      disabled: !canAccessStep3,
     },
   ]
 
@@ -865,10 +882,9 @@ export function NewEntryPage() {
           <div className="section-title">
             <span className="eyebrow">Paso 1</span>
             <h2>Carga una captura o un link</h2>
-            <p>Es lo primero que va a hacer el usuario: subir una imagen o pegar un link para empezar.</p>
           </div>
 
-          <p className="muted new-entry-counts">
+          <p className="muted new-entry-counts new-entry-desktop-only">
             {pendingImages.length}/{MAX_ENTRY_CAPTURES} capturas cargadas
           </p>
         </div>
@@ -877,17 +893,21 @@ export function NewEntryPage() {
           <button
             type="button"
             className="button"
-            disabled={pendingImages.length >= MAX_ENTRY_CAPTURES}
+            disabled={pendingImages.length >= MAX_ENTRY_CAPTURES || isUsingLink}
             onClick={() => {
               inputRef.current?.click()
             }}
           >
-            Elegir imagenes
+            <span className="new-entry-toolbar__label-desktop">Elegir imagenes</span>
+            <span className="new-entry-toolbar__label-mobile">
+              Elegir imagenes ({MAX_ENTRY_CAPTURES})
+            </span>
           </button>
+
           <button
             type="button"
-            className="button--ghost"
-            disabled={isPastingImage || pendingImages.length >= MAX_ENTRY_CAPTURES}
+            className="button--ghost new-entry-desktop-only"
+            disabled={isPastingImage || pendingImages.length >= MAX_ENTRY_CAPTURES || isUsingLink}
             onClick={() => {
               void handlePasteImageFromClipboard()
             }}
@@ -896,7 +916,7 @@ export function NewEntryPage() {
           </button>
         </div>
 
-        <p className="muted">
+        <p className="muted new-entry-desktop-only">
           Usa `Pegar imagen` o el atajo `Ctrl+V` despues de copiar una captura.
         </p>
 
@@ -907,21 +927,17 @@ export function NewEntryPage() {
               type="url"
               placeholder="https://..."
               value={linkInput}
+              disabled={isUsingImages}
               onChange={(event) => {
                 setLinkInput(event.target.value)
               }}
             />
           </label>
 
-          <div className="new-entry-link-actions">
-            <button
-              type="button"
-              className="button--ghost"
-              onClick={handleUseLink}
-            >
-              Usar link
-            </button>
-          </div>
+          <p className="muted new-entry-source-hint">
+            Uno de los dos campos debe completarse para poder continuar. Puedes usar hasta 2
+            imagenes o un solo link.
+          </p>
         </div>
 
         {linkSuccessMessage ? (
@@ -932,7 +948,9 @@ export function NewEntryPage() {
         ) : null}
 
         {pendingImages.length === 0 ? (
-          <p className="muted">Todavia no hay capturas cargadas para esta entrada.</p>
+          <p className="muted new-entry-desktop-only">
+            Todavia no hay capturas cargadas para esta entrada.
+          </p>
         ) : (
           <div className="capture-grid">
             {pendingImages.map((image) => (
@@ -964,6 +982,11 @@ export function NewEntryPage() {
             className="button"
             disabled={!hasSourceReady}
             onClick={() => {
+              if (!pendingImages.length && hasValidLinkInput && !hasPreparedLink) {
+                handleUseLink()
+                return
+              }
+
               setActiveStep(2)
             }}
           >
@@ -974,7 +997,7 @@ export function NewEntryPage() {
       ) : null}
 
       {activeStep === 2 ? (
-      <article className="card new-entry-step-card">
+      <article className="card new-entry-step-card new-entry-step-card--analysis">
         <div className="new-entry-step-card__header">
           <div className="section-title">
             <span className="eyebrow">Paso 2</span>
@@ -988,24 +1011,19 @@ export function NewEntryPage() {
         <div className="new-entry-analysis-actions">
           <button
             type="button"
-            className="button"
+            className="button new-entry-analysis-actions__cta"
             disabled={!canAnalyzeWithAi || isAnalyzing}
             onClick={() => {
               void handleAnalyze()
             }}
           >
             {isAnalyzing
-              ? 'Analizando...'
+              ? 'Cargando...'
               : analysisRunCount >= 2
                 ? 'Limite de IA alcanzado'
-                : 'Analizar con IA'}
+                : 'Cargar datos'}
           </button>
 
-          {!pendingImages.length && hasPreparedLink ? (
-            <p className="muted">
-              Si cargaste solo un link, por ahora completa la ficha manualmente abajo.
-            </p>
-          ) : null}
         </div>
 
         {analysisErrorMessage ? (
@@ -1029,7 +1047,7 @@ export function NewEntryPage() {
               setActiveStep(3)
             }}
           >
-            {hasPreparedLink && !pendingImages.length ? 'Seguir sin IA' : 'Seguir'}
+            {hasPreparedLink && !pendingImages.length ? 'Editar manualmente' : 'Seguir'}
           </button>
         </div>
       </article>
@@ -1037,12 +1055,6 @@ export function NewEntryPage() {
 
       {activeStep === 3 ? (
       <article className="card new-entry-step-card">
-        <div className="section-title">
-          <span className="eyebrow">Paso 3</span>
-          <h2>Chequea lo que encontro</h2>
-          <p>Antes de guardar, deja bien visible lo que la IA completo o lo que ya quedo listo para revisar.</p>
-        </div>
-
         {hasReviewContent ? (
           <div className="new-entry-review-card">
             <div className="detail-hero__eyebrow">
@@ -1093,18 +1105,6 @@ export function NewEntryPage() {
               </div>
             ) : null}
 
-            {combinedExtractedText ? (
-              <div className="new-entry-support-block">
-                <div className="section-title new-entry-support-block__header">
-                  <h3>Texto leido por el sistema</h3>
-                  <p>Esto es lo que recuperamos del OCR antes de guardar.</p>
-                </div>
-                <div className="detail-readonly detail-readonly--ocr">
-                  {combinedExtractedText}
-                </div>
-              </div>
-            ) : null}
-
             {pendingImages.length > 0 ? (
               <div className="new-entry-support-block">
                 <div className="section-title new-entry-support-block__header">
@@ -1128,80 +1128,6 @@ export function NewEntryPage() {
               </div>
             ) : null}
           </div>
-        ) : (
-          <p className="muted">
-            Cuando cargues una captura y corras la IA, aca vas a ver el resumen, el tipo y los datos que ya encontro.
-          </p>
-        )}
-        <div className="new-entry-step-card__footer">
-          <button
-            type="button"
-            className="button--ghost"
-            onClick={() => {
-              setActiveStep(2)
-            }}
-          >
-            Volver
-          </button>
-          <button
-            type="button"
-            className="button"
-            disabled={!hasReviewContent}
-            onClick={() => {
-              setActiveStep(4)
-            }}
-          >
-            Editar y guardar
-          </button>
-        </div>
-      </article>
-      ) : null}
-
-      {activeStep === 4 ? (
-      <article className="card new-entry-step-card">
-        <div className="new-entry-step-card__header new-entry-step-card__header--split">
-          <div className="section-title">
-            <span className="eyebrow">Paso 4</span>
-            <h2>Ajusta y guarda</h2>
-            <p>
-              {isReviewEditing
-                ? 'Corrige la ficha y guarda cuando este lista.'
-                : 'La ficha queda en modo lectura hasta que actives Editar ficha.'}
-            </p>
-          </div>
-
-          {isReviewEditing ? (
-            <button
-              type="submit"
-              form="entry-new-form"
-              className="button"
-              disabled={isSubmitting || !canSubmitEntry}
-            >
-              {isSubmitting ? 'Guardando...' : 'Guardar en tu archivo'}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="button"
-              onClick={() => {
-                setIsReviewEditing(true)
-              }}
-            >
-              Editar ficha
-            </button>
-          )}
-        </div>
-
-        {combinedExtractedText ? (
-          <div className="new-entry-support-block">
-            <div className="section-title new-entry-support-block__header">
-              <h3>Texto leido por el sistema</h3>
-              <p>Usalo como referencia antes de tocar la ficha.</p>
-            </div>
-            <div className="detail-readonly detail-readonly--ocr">
-              {combinedExtractedText}
-            </div>
-          </div>
         ) : null}
 
         <EntryForm
@@ -1213,7 +1139,7 @@ export function NewEntryPage() {
           canSubmit={canSubmitEntry}
           submitDisabledReason={submitDisabledReason}
           showActions={false}
-          isReadOnly={!isReviewEditing}
+          isReadOnly={false}
           errorMessage={saveErrorMessage}
           successMessage={saveSuccessMessage}
           availableCategories={availableCategories}
@@ -1226,52 +1152,24 @@ export function NewEntryPage() {
           onSubmit={handleSave}
         />
 
-        {pendingImages.length > 0 ? (
-          <div className="new-entry-support-block">
-            <div className="section-title new-entry-support-block__header">
-              <h3>Capturas cargadas</h3>
-              <p>Se mantienen abajo para consultar mientras editas.</p>
-            </div>
-            <div className="capture-grid capture-grid--compact">
-              {pendingImages.map((image) => (
-                <article className="capture-card" key={image.id}>
-                  <img
-                    src={image.previewUrl}
-                    alt={`Captura ${image.position + 1}`}
-                    className="capture-card__image"
-                  />
-                  <div className="capture-card__content">
-                    <strong>Captura {image.position + 1}</strong>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
         <div className="new-entry-step-card__footer">
           <button
             type="button"
             className="button--ghost"
             onClick={() => {
-              setActiveStep(3)
+              setActiveStep(2)
             }}
           >
             Volver
           </button>
-          {isReviewEditing ? (
-            <button
-              type="button"
-              className="button--ghost"
-              onClick={() => {
-                setIsReviewEditing(false)
-                setSaveErrorMessage(null)
-                setSaveSuccessMessage(null)
-              }}
-            >
-              Cancelar edicion
-            </button>
-          ) : null}
+          <button
+            type="submit"
+            form="entry-new-form"
+            className="button"
+            disabled={isSubmitting || !canSubmitEntry}
+          >
+            {isSubmitting ? 'Guardando...' : 'Guardar en tu archivo'}
+          </button>
         </div>
       </article>
       ) : null}

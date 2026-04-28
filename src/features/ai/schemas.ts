@@ -70,14 +70,17 @@ export const ocrTextByImageSchema = z
 export const analyzeEntryRequestSchema = z
   .object({
     combinedExtractedText: z.string(),
-    images: z.array(aiAnalysisImageSchema).min(1),
-    ocrTextByImage: z.array(ocrTextByImageSchema).min(1),
+    images: z.array(aiAnalysisImageSchema).default([]),
+    ocrTextByImage: z.array(ocrTextByImageSchema).default([]),
+    sourceType: z.enum(['screenshot', 'manual', 'link']).optional(),
+    sourceName: z.string().default(''),
+    sourceUrl: z.string().default(''),
   })
   .strict()
 
 export type AiAnalysisInput = z.input<typeof aiAnalysisSchema>
 export type AiAnalysis = z.infer<typeof aiAnalysisSchema>
-export type AnalyzeEntryRequest = z.infer<typeof analyzeEntryRequestSchema>
+export type AnalyzeEntryRequest = z.input<typeof analyzeEntryRequestSchema>
 
 export function normalizeAiAnalysis(payload: unknown) {
   return aiAnalysisSchema.parse(payload)

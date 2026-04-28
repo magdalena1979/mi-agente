@@ -24,7 +24,7 @@ export function ManageUserCategoriesModal({
   return (
     <div className="modal-backdrop" role="presentation">
       <div
-        className="modal-card"
+        className="modal-card modal-card--category-manage"
         role="dialog"
         aria-modal="true"
         aria-labelledby="manage-user-categories-title"

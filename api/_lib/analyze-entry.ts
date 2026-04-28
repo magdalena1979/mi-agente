@@ -121,6 +121,15 @@ const analyzeEntryServerRequestSchema = z
       (value) => (Array.isArray(value) ? value : []),
       z.array(analyzeEntryOcrInputSchema),
     ),
+    sourceType: z.preprocess(
+      (value) =>
+        value === 'link' || value === 'manual' || value === 'screenshot'
+          ? value
+          : 'screenshot',
+      z.enum(['screenshot', 'manual', 'link']),
+    ),
+    sourceName: optionalStringSchema,
+    sourceUrl: optionalStringSchema,
   })
   .passthrough()
 
@@ -143,6 +152,9 @@ type AnalyzeEntryRequest = {
   combinedExtractedText: string
   images: AnalyzeEntryImageInput[]
   ocrTextByImage: AnalyzeEntryOcrInput[]
+  sourceType: 'screenshot' | 'manual' | 'link'
+  sourceName: string
+  sourceUrl: string
 }
 
 type AnalyzeEntryImageForAi = AnalyzeEntryImageInput & {
@@ -153,6 +165,9 @@ type AnalyzeEntryPreparedPayload = {
   combinedExtractedText: string
   images: AnalyzeEntryImageForAi[]
   ocrTextByImage: AnalyzeEntryOcrInput[]
+  sourceType: 'screenshot' | 'manual' | 'link'
+  sourceName: string
+  sourceUrl: string
 }
 
 function normalizeAnalyzeEntryRequest(payload: unknown) {
@@ -186,6 +201,10 @@ function hasUsableOcrText(payload: AnalyzeEntryRequest) {
   )
 }
 
+function hasUsableLinkSource(payload: AnalyzeEntryRequest) {
+  return payload.sourceType === 'link' && payload.sourceUrl.trim().length > 0
+}
+
 function validatePayloadForAi(
   payload: AnalyzeEntryRequest,
 ): AnalyzeEntryPreparedPayload {
@@ -193,9 +212,13 @@ function validatePayloadForAi(
     (image): image is AnalyzeEntryImageForAi => typeof image.dataUrl === 'string',
   )
 
-  if (imagesWithData.length === 0 && !hasUsableOcrText(payload)) {
+  if (
+    imagesWithData.length === 0 &&
+    !hasUsableOcrText(payload) &&
+    !hasUsableLinkSource(payload)
+  ) {
     throw new AnalyzeEntryValidationError(
-      'Necesitamos texto OCR o al menos una captura valida para correr la IA.',
+      'Necesitamos un link valido, texto OCR o al menos una captura valida para correr la IA.',
     )
   }
 
@@ -237,6 +260,8 @@ export function getAnalyzePayloadDebugSummary(rawPayload: unknown) {
       requestMode:
         imagesWithData.length > 0
           ? 'image+ocr'
+          : hasUsableLinkSource(payload)
+            ? 'link-only'
           : hasUsableOcrText(payload)
             ? 'ocr-only'
             : 'empty',
@@ -264,6 +289,9 @@ export function getAnalyzePayloadDebugSummary(rawPayload: unknown) {
 
 function buildPrompt(payload: AnalyzeEntryPreparedPayload) {
   const cleanedCombinedText = cleanText(payload.combinedExtractedText)
+  const cleanedSourceName = cleanText(payload.sourceName)
+  const cleanedSourceUrl = payload.sourceUrl.trim()
+  const isLinkSource = payload.sourceType === 'link' && cleanedSourceUrl.length > 0
   const ocrByImage = payload.ocrTextByImage
     .map((item) => {
       const suffix =
@@ -276,14 +304,18 @@ function buildPrompt(payload: AnalyzeEntryPreparedPayload) {
     .join('\n\n')
   const ocrInput = {
     text: cleanedCombinedText,
-    source: 'screenshot',
+    source: isLinkSource ? 'link' : 'screenshot',
     language: 'auto',
   }
 
   return [
-    'Analyze these screenshots as a single personal entry for a Spanish-language personal catalog app.',
+    isLinkSource
+      ? 'Analyze this link as a single personal entry for a Spanish-language personal catalog app.'
+      : 'Analyze these screenshots as a single personal entry for a Spanish-language personal catalog app.',
     payload.images.length > 0
       ? 'Use both the screenshot visuals and the OCR text.'
+      : isLinkSource
+        ? 'The request includes a link without screenshots. Use the URL, the detected platform/source, and any reliable clues from the text. Do not pretend you visited the page if the URL is ambiguous.'
       : 'The request does not include the original screenshot images. Use only the OCR text and do not infer visual UI details that are not supported by the text.',
     'Primary task: extract a title, detect the content type (book, series, movie, article, idea, place, trip, recipe, plant, garden, collection or other), and write a clear useful summary from the OCR text and any available screenshot evidence.',
     'Classify the entry as exactly one of: book, event, recipe, movie, series, article, place, trip, plant, garden, collection, other.',
@@ -294,6 +326,7 @@ function buildPrompt(payload: AnalyzeEntryPreparedPayload) {
     '- When an Instagram handle is visible in the header, caption or account row, prefer sourceName = "Instagram @handle".',
     '- If the screenshot is clearly from TikTok, X, Pinterest, Facebook, YouTube, Reddit, WhatsApp or another known platform, reflect that in sourceName.',
     '- When a social username or handle is visible and reliable, include it in sourceName.',
+    '- If the source is a link, use the URL structure, slug, host and platform hints to infer the item only when reliable. If the URL is too opaque, keep the title and summary conservative and do not invent details.',
     '- Streaming screenshots from Prime Video, Netflix, Max, Disney+, YouTube or similar are usually movie or series entries.',
     '- If the capture mentions season, episodio, temporada, episode or chapter, prefer series.',
     '- If the capture shows a runtime in minutes and no season/episode cues, prefer movie.',
@@ -332,6 +365,17 @@ function buildPrompt(payload: AnalyzeEntryPreparedPayload) {
     'Expected JSON shape:',
     '{"detectedType":"movie","title":"string","summary":"string","sourceName":"Instagram @usuario","tags":["string"],"fields":{"author":"","date":"","time":"","location":"","director":"","cast":"","genre":"","year":"","duration":"","platform":"","ingredientsText":"","topic":"","note":""},"confidence":0.0}',
     '',
+    'Source context:',
+    JSON.stringify(
+      {
+        sourceType: payload.sourceType,
+        sourceName: cleanedSourceName,
+        sourceUrl: cleanedSourceUrl,
+      },
+      null,
+      2,
+    ),
+    '',
     'OCR input object:',
     JSON.stringify(ocrInput, null, 2),
     '',
@@ -339,7 +383,7 @@ function buildPrompt(payload: AnalyzeEntryPreparedPayload) {
     cleanedCombinedText || '(empty)',
     '',
     'OCR by image:',
-    ocrByImage,
+    ocrByImage || '(none)',
   ].join('\n')
 }
 
@@ -371,7 +415,7 @@ export async function analyzeEntryPayload(
         {
           role: 'system',
           content:
-            'You extract structured personal catalog entries from screenshots. Reply with strict JSON only and never include markdown fences or explanations.',
+            'You extract structured personal catalog entries from screenshots or links. Reply with strict JSON only and never include markdown fences or explanations.',
         },
         {
           role: 'user',
@@ -395,8 +439,8 @@ export async function analyzeEntryPayload(
   } catch (error) {
     throw new AnalyzeEntryUpstreamError(
       error instanceof Error
-        ? `La IA no pudo procesar esta captura. ${error.message}`
-        : 'La IA no pudo procesar esta captura.',
+        ? `La IA no pudo procesar esta entrada. ${error.message}`
+        : 'La IA no pudo procesar esta entrada.',
     )
   }
 

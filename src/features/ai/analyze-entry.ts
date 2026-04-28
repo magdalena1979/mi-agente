@@ -16,11 +16,14 @@ function cleanText(text: string) {
 function normalizeAnalyzeEntryPayload(input: AnalyzeEntryRequest): AnalyzeEntryRequest {
   return {
     ...input,
-    combinedExtractedText: cleanText(input.combinedExtractedText),
-    ocrTextByImage: input.ocrTextByImage.map((item) => ({
+    combinedExtractedText: cleanText(input.combinedExtractedText ?? ''),
+    images: input.images ?? [],
+    sourceName: cleanText(input.sourceName ?? ''),
+    sourceUrl: input.sourceUrl?.trim() ?? '',
+    ocrTextByImage: (input.ocrTextByImage ?? []).map((item) => ({
       ...item,
       text: cleanText(item.text),
-      errorMessage: cleanText(item.errorMessage),
+      errorMessage: cleanText(item.errorMessage ?? ''),
     })),
   }
 }
@@ -57,8 +60,8 @@ export async function analyzeEntry(input: AnalyzeEntryRequest) {
       typeof data.error === 'string'
         ? data.error
         : response.status >= 500
-          ? 'No pudimos analizar las capturas desde el servidor. Si estas en mobile, prueba con una captura mas simple o mas recortada.'
-          : 'No pudimos analizar las capturas con IA.'
+          ? 'No pudimos analizar esta entrada desde el servidor. Si usaste capturas en mobile, prueba con una imagen mas simple o mas recortada.'
+          : 'No pudimos analizar esta entrada con IA.'
 
     throw new Error(requestId ? `${message} (ref: ${requestId})` : message)
   }

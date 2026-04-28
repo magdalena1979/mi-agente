@@ -43,6 +43,10 @@ export const entryFormSchema = z.object({
 })
 
 export type EntryFormValues = z.infer<typeof entryFormSchema>
+type EntryAnalysisSourceContext = Pick<
+  EntryFormValues,
+  'sourceType' | 'sourceName' | 'sourceUrl'
+>
 
 function normalizeEditableStatus(status?: EntryStatus | null): EntryFormValues['status'] {
   if (status === 'reviewed') {
@@ -110,11 +114,18 @@ export function getEntryFormDefaultValues(
 export function getEntryFormValuesFromAnalysis(
   analysis: AiAnalysisResult | null,
   extractedText: string,
+  sourceContext?: Partial<EntryAnalysisSourceContext>,
 ) {
+  const nextSourceType = sourceContext?.sourceType ?? 'screenshot'
+  const nextSourceName = sourceContext?.sourceName?.trim() ?? ''
+  const nextSourceUrl = sourceContext?.sourceUrl?.trim() ?? ''
+
   if (!analysis) {
     return createEmptyEntryFormValues({
       extractedText,
-      sourceType: 'screenshot',
+      sourceType: nextSourceType,
+      sourceName: nextSourceName,
+      sourceUrl: nextSourceUrl,
     })
   }
 
@@ -128,8 +139,9 @@ export function getEntryFormValuesFromAnalysis(
     type: analysis.detectedType,
     title: analysis.title,
     summary: analysis.summary,
-    sourceName: analysis.sourceName,
-    sourceType: 'screenshot',
+    sourceName: analysis.sourceName.trim() || nextSourceName,
+    sourceType: nextSourceType,
+    sourceUrl: nextSourceUrl,
     status: 'draft',
     tagsText: analysis.tags.join(', '),
     extractedText,

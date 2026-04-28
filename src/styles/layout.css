@@ -127,4 +127,8 @@
   .app-shell main {
     padding: 10px 16px 32px;
   }
+
+  .app-shell--has-mobile-footer main {
+    padding-bottom: 120px;
+  }
 }

@@ -566,7 +566,7 @@ export function EntriesHomePage() {
 
     const nextOffset = Math.max(
       0,
-      Math.min(MOBILE_SWIPE_ACTIONS_WIDTH, clientX - dragStartX + dragStartOffsetX),
+      Math.min(MOBILE_SWIPE_ACTIONS_WIDTH, dragStartX - clientX + dragStartOffsetX),
     )
 
     setDragOffsetX(nextOffset)
@@ -762,6 +762,24 @@ export function EntriesHomePage() {
     }
   }
 
+  useEffect(() => {
+    function handleLibrarySearchChange(event: Event) {
+      const nextValue =
+        event instanceof CustomEvent && typeof event.detail === 'string'
+          ? event.detail
+          : ''
+
+      setSearchQuery(nextValue)
+      setCurrentPage(1)
+    }
+
+    window.addEventListener('refind:library-search-change', handleLibrarySearchChange)
+
+    return () => {
+      window.removeEventListener('refind:library-search-change', handleLibrarySearchChange)
+    }
+  }, [])
+
   return (
     <section className="page page--library">
       <CreateUserCategoryModal
@@ -816,14 +834,6 @@ export function EntriesHomePage() {
           */}
         </div>
 
-        <Link
-          className="button library-header__center-cta"
-          to="/entries/new"
-          aria-label="Agregar algo"
-        >
-          <span aria-hidden="true">+</span>
-        </Link>
-
         {/* Compartido desactivado temporalmente en el frontend.
         <div className="library-header__actions">
           <NotificationsBell />
@@ -836,7 +846,56 @@ export function EntriesHomePage() {
 
         <>
           <section className="library-toolbar">
-            <label className="search-field">
+            <div
+              className="filter-row filter-row--mobile"
+              aria-label="Filtrar por categoria personal o tipo detectado"
+            >
+              <button
+                type="button"
+                className={
+                  activeCategoryId === 'all'
+                    ? 'filter-chip filter-chip--active'
+                    : 'filter-chip'
+                }
+                onClick={() => {
+                  setActiveCategoryId('all')
+                  setCurrentPage(1)
+                }}
+              >
+                Todo
+              </button>
+
+              {userCategories.map((category) => (
+                <button
+                  key={category.id}
+                  type="button"
+                  className={
+                    activeCategoryId === category.id
+                      ? 'filter-chip filter-chip--active'
+                      : 'filter-chip'
+                  }
+                  onClick={() => {
+                    setActiveCategoryId(category.id)
+                    setCurrentPage(1)
+                  }}
+                >
+                  {category.name}
+                </button>
+              ))}
+
+              <button
+                type="button"
+                className="filter-chip filter-chip--add"
+                onClick={() => {
+                  setCategoryErrorMessage(null)
+                  setIsCreateCategoryModalOpen(true)
+                }}
+              >
+                Otra
+              </button>
+            </div>
+
+            <label className="search-field library-toolbar__search library-toolbar__search--desktop">
               <span className="sr-only">Buscar en tu archivo</span>
               <input
                 type="search"
@@ -847,24 +906,6 @@ export function EntriesHomePage() {
                   setCurrentPage(1)
                 }}
               />
-            </label>
-
-            <label className="form-field library-filter-select">
-              <span>Categoria</span>
-              <select
-                value={activeCategoryId}
-                onChange={(event) => {
-                  setActiveCategoryId(event.target.value)
-                  setCurrentPage(1)
-                }}
-              >
-                <option value="all">Todas las categorias</option>
-                {userCategories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
             </label>
 
             <div
@@ -933,7 +974,7 @@ export function EntriesHomePage() {
                 to="/entries/new"
                 aria-label="Agregar algo"
               >
-                <span className="library-toolbar__add-mobile" aria-hidden="true">+</span>
+                <span className="library-toolbar__add-mobile">Agregar</span>
                 <span className="library-toolbar__add-desktop">Agregar algo</span>
               </Link>
             </div>
@@ -1034,7 +1075,7 @@ export function EntriesHomePage() {
 
                     <article
                       className={isSwipeOpen ? 'library-row library-row--swiped' : 'library-row'}
-                      style={{ transform: `translateX(${swipeOffset}px)` }}
+                      style={{ transform: `translateX(-${swipeOffset}px)` }}
                       onTouchStart={(event) => {
                         handleSwipeStart(entry.id, event.touches[0].clientX)
                       }}

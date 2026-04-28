@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
 
+import BackgroundLines from '@/components/BackgroundLines'
 import { useAuth } from '@/features/auth/auth-context'
 import { NotificationsBell } from '@/features/sharing/components/NotificationsBell'
-import BackgroundLines from '@/components/BackgroundLines'
 import { env } from '@/lib/env'
 
 function getAvatarLabel(email?: string): string {
@@ -15,12 +15,17 @@ export function AppShell() {
   const location = useLocation()
   const { user, isLoading, signOut } = useAuth()
   const isAuthRoute = location.pathname === '/auth'
+  const isLibraryRoute = location.pathname === '/'
   const [isScrolled, setIsScrolled] = useState(false)
+  const [isMobileViewport, setIsMobileViewport] = useState(false)
+  const [isHeaderSearchOpen, setIsHeaderSearchOpen] = useState(false)
+  const [headerSearchValue, setHeaderSearchValue] = useState('')
+  const headerSearchInputRef = useRef<HTMLInputElement | null>(null)
 
   const headerStatusText = isLoading
-    ? 'Verificando sesión...'
+    ? 'Verificando sesion...'
     : user?.email
-      ? `Sesión iniciada - ${user.email}`
+      ? `Sesion iniciada - ${user.email}`
       : env.isSupabaseConfigured
         ? null
         : 'Configura Supabase para continuar'
@@ -38,6 +43,46 @@ export function AppShell() {
     }
   }, [])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const mediaQuery = window.matchMedia('(max-width: 639px)')
+    const updateViewport = () => {
+      setIsMobileViewport(mediaQuery.matches)
+    }
+
+    updateViewport()
+    mediaQuery.addEventListener('change', updateViewport)
+
+    return () => {
+      mediaQuery.removeEventListener('change', updateViewport)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isLibraryRoute) {
+      setIsHeaderSearchOpen(false)
+      setHeaderSearchValue('')
+      return
+    }
+
+    window.dispatchEvent(
+      new CustomEvent('refind:library-search-change', {
+        detail: headerSearchValue,
+      }),
+    )
+  }, [headerSearchValue, isLibraryRoute])
+
+  useEffect(() => {
+    if (!isHeaderSearchOpen) {
+      return
+    }
+
+    headerSearchInputRef.current?.focus()
+  }, [isHeaderSearchOpen])
+
   async function handleSignOut() {
     try {
       await signOut()
@@ -46,13 +91,28 @@ export function AppShell() {
     }
   }
 
+  function handleHeaderSearch() {
+    if (!isHeaderSearchOpen) {
+      setIsHeaderSearchOpen(true)
+      return
+    }
+
+    headerSearchInputRef.current?.focus()
+    headerSearchInputRef.current?.select()
+  }
+
+  const shellClassName = [
+    'app-shell',
+    user ? 'app-shell--authenticated' : '',
+    isAuthRoute ? 'app-shell--auth-route' : '',
+    isMobileViewport && !isAuthRoute ? 'app-shell--has-mobile-footer' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
   return (
     <div
-      className={
-        user
-          ? `app-shell app-shell--authenticated${isAuthRoute ? ' app-shell--auth-route' : ''}`
-          : `app-shell${isAuthRoute ? ' app-shell--auth-route' : ''}`
-      }
+      className={shellClassName}
       style={{
         position: 'relative',
         minHeight: '100vh',
@@ -60,10 +120,8 @@ export function AppShell() {
         background: '#0D0D0D',
       }}
     >
-      {/* BACKGROUND */}
       <BackgroundLines />
 
-      {/* CONTENIDO */}
       <div style={{ position: 'relative', zIndex: 1 }}>
         <header
           className={
@@ -82,17 +140,50 @@ export function AppShell() {
                 </div>
               </div>
 
-              <div className="app-header__actions">
-                {user ? (
-                  <>
-                    <button
-                      type="button"
-                      className="button--ghost app-header__logout app-header__logout--mobile"
-                      onClick={() => void handleSignOut()}
-                    >
-                      Cerrar sesión
-                    </button>
+              <div
+                className={
+                  isLibraryRoute && isMobileViewport && isHeaderSearchOpen
+                    ? 'app-header__actions app-header__actions--search-open'
+                    : 'app-header__actions'
+                }
+              >
+                {isLibraryRoute && isMobileViewport && isHeaderSearchOpen ? (
+                  <label className="search-field app-header__search-field">
+                    <span className="sr-only">Buscar en tu archivo</span>
+                    <input
+                      ref={headerSearchInputRef}
+                      type="search"
+                      value={headerSearchValue}
+                      placeholder="Buscar"
+                      onChange={(event) => {
+                        setHeaderSearchValue(event.target.value)
+                      }}
+                    />
+                  </label>
+                ) : null}
 
+                {isLibraryRoute ? (
+                  <button
+                    type="button"
+                    className="button--ghost icon-button app-header__search"
+                    aria-label="Buscar"
+                    onClick={handleHeaderSearch}
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true" className="icon-button__icon">
+                      <path
+                        d="m21 21-4.35-4.35m1.85-5.15a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                ) : null}
+
+                {user && !isMobileViewport ? (
+                  <>
                     <NotificationsBell />
 
                     <div className="app-header__avatar-block">
@@ -107,16 +198,16 @@ export function AppShell() {
                           className="app-header__logout"
                           onClick={() => void handleSignOut()}
                         >
-                          Cerrar sesión
+                          Cerrar sesion
                         </button>
                       </div>
                     </div>
                   </>
-                ) : (
+                ) : !user ? (
                   <Link className="button--ghost app-header__signin" to="/auth">
-                    Iniciar sesión
+                    Iniciar sesion
                   </Link>
-                )}
+                ) : null}
 
                 {!user && headerStatusText ? (
                   <p className="header-meta__text header-meta__text--stacked">
@@ -131,6 +222,41 @@ export function AppShell() {
         <main>
           <Outlet />
         </main>
+
+        {isMobileViewport && !isAuthRoute ? (
+          <nav className="app-mobile-footer" aria-label="Accesos de cuenta">
+            <div className="app-mobile-footer__item">
+              <NotificationsBell />
+            </div>
+
+            <div className="app-mobile-footer__item">
+              {user ? (
+                <button
+                  type="button"
+                  className="button--ghost app-mobile-footer__session"
+                  onClick={() => void handleSignOut()}
+                >
+                  Cerrar sesion
+                </button>
+              ) : (
+                <Link className="button--ghost app-mobile-footer__session" to="/auth">
+                  Iniciar sesion
+                </Link>
+              )}
+            </div>
+
+            <div className="app-mobile-footer__item">
+              <div className="app-mobile-footer__avatar-wrap">
+                <div className="app-header__avatar" aria-hidden="true">
+                  {getAvatarLabel(user?.email)}
+                </div>
+                <span className="app-mobile-footer__avatar-label">
+                  {user?.email?.split('@')[0] ?? 'Cuenta'}
+                </span>
+              </div>
+            </div>
+          </nav>
+        ) : null}
       </div>
     </div>
   )
