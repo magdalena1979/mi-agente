@@ -14,8 +14,10 @@ function getAvatarLabel(email?: string): string {
 export function AppShell() {
   const location = useLocation()
   const { user, isLoading, signOut } = useAuth()
+  const isHomeRoute = location.pathname === '/'
   const isAuthRoute = location.pathname === '/auth'
-  const isLibraryRoute = location.pathname === '/'
+  const isLibraryRoute = isHomeRoute && Boolean(user)
+  const isLandingRoute = isHomeRoute && !user && !isLoading
   const [isScrolled, setIsScrolled] = useState(false)
   const [isMobileViewport, setIsMobileViewport] = useState(false)
   const [isHeaderSearchOpen, setIsHeaderSearchOpen] = useState(false)
@@ -105,7 +107,7 @@ export function AppShell() {
     'app-shell',
     user ? 'app-shell--authenticated' : '',
     isAuthRoute ? 'app-shell--auth-route' : '',
-    isMobileViewport && !isAuthRoute ? 'app-shell--has-mobile-footer' : '',
+    isMobileViewport && user && !isAuthRoute ? 'app-shell--has-mobile-footer' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -203,13 +205,9 @@ export function AppShell() {
                       </div>
                     </div>
                   </>
-                ) : !user ? (
-                  <Link className="button--ghost app-header__signin" to="/auth">
-                    Iniciar sesion
-                  </Link>
                 ) : null}
 
-                {!user && headerStatusText ? (
+                {!user && !isLandingRoute && headerStatusText ? (
                   <p className="header-meta__text header-meta__text--stacked">
                     {headerStatusText}
                   </p>
@@ -223,7 +221,7 @@ export function AppShell() {
           <Outlet />
         </main>
 
-        {isMobileViewport && !isAuthRoute ? (
+        {isMobileViewport && user && !isAuthRoute ? (
           <nav className="app-mobile-footer" aria-label="Accesos de cuenta">
             <div className="app-mobile-footer__item">
               <NotificationsBell />

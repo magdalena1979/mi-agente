@@ -4,4 +4,5 @@
 @import './features/auth/auth.css';
 @import './features/categories/categories.css';
 @import './features/entries/entries.css';
+@import './features/home/home.css';
 @import './features/sharing/sharing.css';

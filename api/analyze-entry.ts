@@ -99,6 +99,11 @@ export default async function handler(
     const result = await analyzeEntryPayload(
       requestBody,
       process.env.GROQ_API_KEY,
+      {
+        metaAppId: process.env.META_APP_ID,
+        metaAppSecret: process.env.META_APP_SECRET,
+        metaOEmbedAccessToken: process.env.META_OEMBED_ACCESS_TOKEN,
+      },
     )
 
     return res.status(200).json(result)

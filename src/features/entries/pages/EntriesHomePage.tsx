@@ -12,6 +12,10 @@ import { getSuggestedCategoryKeyForEntryType } from '@/features/categories/categ
 import { CreateUserCategoryModal } from '@/features/categories/components/CreateUserCategoryModal'
 import { ManageUserCategoriesModal } from '@/features/categories/components/ManageUserCategoriesModal'
 import { UserCategorySetupModal } from '@/features/categories/components/UserCategorySetupModal'
+import {
+  hasSeenCategorySetupModal,
+  markCategorySetupModalSeen,
+} from '@/features/auth/auth-preferences'
 import { useAuth } from '@/features/auth/auth-context'
 import { DEFAULT_USER_CATEGORY_NAMES, type UserCategoryRecord } from '@/types/categories'
 import { entryTypeOptions } from '@/features/entries/config/entry-type-config'
@@ -20,7 +24,6 @@ import { listEntryUserMarks, upsertEntryUserMark } from '@/features/sharing/shar
 import type { EntryRecord, EntryType, EntryUserMarkRecord } from '@/types/entries'
 
 const PAGE_SIZE = 20
-const CATEGORY_SETUP_STORAGE_PREFIX = 'user-category-setup-completed:'
 const MOBILE_SWIPE_ACTIONS_WIDTH = 216
 const MOBILE_SWIPE_OPEN_THRESHOLD = 88
 
@@ -113,26 +116,6 @@ function getUploaderLabel(entry: EntryRecord, currentUserId?: string) {
   return entry.uploaderName ?? entry.uploaderEmail ?? entry.userId
 }
 
-function getCategorySetupStorageKey(userId: string) {
-  return `${CATEGORY_SETUP_STORAGE_PREFIX}${userId}`
-}
-
-function readHasCompletedCategorySetup(userId: string) {
-  if (typeof window === 'undefined') {
-    return false
-  }
-
-  return window.localStorage.getItem(getCategorySetupStorageKey(userId)) === 'true'
-}
-
-function writeHasCompletedCategorySetup(userId: string) {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  window.localStorage.setItem(getCategorySetupStorageKey(userId), 'true')
-}
-
 export function EntriesHomePage() {
   const { user } = useAuth()
   const suggestedCategoryNames = useMemo(() => [...DEFAULT_USER_CATEGORY_NAMES], [])
@@ -154,6 +137,7 @@ export function EntriesHomePage() {
   const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null)
   const [categoryErrorMessage, setCategoryErrorMessage] = useState<string | null>(null)
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false)
+  const [isLoadingUserCategories, setIsLoadingUserCategories] = useState(false)
   const [isSavingCategorySetup, setIsSavingCategorySetup] = useState(false)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [archivingId, setArchivingId] = useState<string | null>(null)
@@ -216,19 +200,26 @@ export function EntriesHomePage() {
         if (!ignore) {
           setUserCategories([])
           setEntryCategoryIdsByEntryId({})
+          setIsSetupModalOpen(false)
+          setIsLoadingUserCategories(false)
         }
         return
       }
+
+      setIsLoadingUserCategories(true)
 
       try {
         const nextCategories = await listUserCategories(user.id)
 
         if (!ignore) {
           setUserCategories(nextCategories)
+          setIsSetupModalOpen(
+            nextCategories.length === 0 && !hasSeenCategorySetupModal(user),
+          )
+        }
 
-          if (nextCategories.length > 0) {
-            writeHasCompletedCategorySetup(user.id)
-          }
+        if (nextCategories.length > 0 && !hasSeenCategorySetupModal(user)) {
+          await markCategorySetupModalSeen()
         }
       } catch (error) {
         if (!ignore) {
@@ -237,6 +228,10 @@ export function EntriesHomePage() {
               ? error.message
               : 'No pudimos cargar tus subcategorias personales.',
           )
+        }
+      } finally {
+        if (!ignore) {
+          setIsLoadingUserCategories(false)
         }
       }
     }
@@ -420,17 +415,15 @@ export function EntriesHomePage() {
   }, [activeCategoryId, userCategories])
 
   useEffect(() => {
-    if (!user) {
-      setIsSetupModalOpen(false)
+    if (!user || isLoadingUserCategories) {
       return
     }
 
-    const didCompleteSetup = readHasCompletedCategorySetup(user.id)
+    const shouldOpenSetupModal =
+      userCategories.length === 0 && !hasSeenCategorySetupModal(user)
 
-    if (userCategories.length === 0 && !didCompleteSetup) {
-      setIsSetupModalOpen(true)
-    }
-  }, [user, userCategories.length])
+    setIsSetupModalOpen(shouldOpenSetupModal)
+  }, [isLoadingUserCategories, user, userCategories.length])
 
   const totalPages = Math.max(1, Math.ceil(filteredEntries.length / PAGE_SIZE))
   const safeCurrentPage = Math.min(currentPage, totalPages)
@@ -705,8 +698,8 @@ export function EntriesHomePage() {
       })
 
       const nextCategories = await refreshUserCategories()
+      await markCategorySetupModalSeen()
 
-      writeHasCompletedCategorySetup(user.id)
       setIsSetupModalOpen(false)
 
       if (nextCategories[0]) {
@@ -720,6 +713,21 @@ export function EntriesHomePage() {
       )
     } finally {
       setIsSavingCategorySetup(false)
+    }
+  }
+
+  async function handleDismissSetupModal() {
+    setCategoryErrorMessage(null)
+
+    try {
+      await markCategorySetupModalSeen()
+      setIsSetupModalOpen(false)
+    } catch (error) {
+      setCategoryErrorMessage(
+        error instanceof Error
+          ? error.message
+          : 'No pudimos guardar tu preferencia para este modal.',
+      )
     }
   }
 
@@ -811,11 +819,7 @@ export function EntriesHomePage() {
         isSubmitting={isSavingCategorySetup}
         errorMessage={categoryErrorMessage}
         onClose={() => {
-          if (user) {
-            writeHasCompletedCategorySetup(user.id)
-          }
-          setIsSetupModalOpen(false)
-          setCategoryErrorMessage(null)
+          void handleDismissSetupModal()
         }}
         onSubmit={handleSetupCategories}
       />

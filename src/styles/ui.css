@@ -139,12 +139,6 @@
   white-space: nowrap;
 }
 
-.app-header__signin {
-  min-height: 42px;
-  padding-inline: 1rem;
-  white-space: nowrap;
-}
-
 .app-header__logout {
   min-height: auto;
   padding: 0;
@@ -702,12 +696,6 @@
     justify-content: flex-end;
     align-items: center;
     gap: 8px;
-  }
-
-  .app-header__signin {
-    min-height: 38px;
-    padding: 0.55rem 0.85rem;
-    font-size: 0.84rem;
   }
 
   .app-header__search {

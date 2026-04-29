@@ -251,7 +251,7 @@ export function AuthPage() {
                 {isSubmitting
                   ? 'Procesando...'
                   : mode === authModes.signIn
-                    ? 'Entrar'
+                    ? 'Iniciar Sesión'
                     : 'Crear cuenta'}
               </button>
 
@@ -305,31 +305,7 @@ export function AuthPage() {
           </form>
         </article>
 
-        <article className="card auth-card auth-card--story">
-          <div className="section-title auth-story">
-            <span className="eyebrow">En 4 pasos</span>
-            <h2>Como funciona</h2>
-            <p className="auth-story__intro">
-              Un recorrido simple para pasar de una captura a algo util y facil de recuperar.
-            </p>
-          </div>
-
-          <div className="steps auth-steps auth-steps--showcase">
-            {[
-              'Cargas capturas o links que te queres guardar.',
-              'OCR + IA entienden de que se trata y proponen una ficha.',
-              'Revisas, editas y lo convertis en algo facil de volver a encontrar.',
-              'Lo guardas en tu archivo para tenerlo ordenado y a mano.',
-            ].map((step, index) => (
-              <article className="auth-step-card" key={step}>
-                <div className="step">
-                  <span className="step__index">{index + 1}</span>
-                  <p>{step}</p>
-                </div>
-              </article>
-            ))}
-          </div>
-        </article>
+       
       </div>
     </section>
   )

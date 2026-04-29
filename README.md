@@ -64,7 +64,18 @@ Crear un `.env` a partir de `.env.example`:
 VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
 GROQ_API_KEY=
+META_APP_ID=
+META_APP_SECRET=
+META_OEMBED_ACCESS_TOKEN=
 ```
+
+Para leer posts de Instagram de forma confiable en links pegados, la opcion estable es configurar credenciales de Meta para `instagram_oembed`.
+Puedes usar:
+
+- `META_OEMBED_ACCESS_TOKEN`: token listo para usar.
+- o `META_APP_ID` + `META_APP_SECRET`: la app arma el app token `app_id|app_secret`.
+
+Sin una de esas opciones, Instagram puede bloquear la lectura real del contenido y solo quedaran fallbacks parciales.
 
 ## Setup local
 

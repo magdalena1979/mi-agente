@@ -170,6 +170,26 @@ type AnalyzeEntryPreparedPayload = {
   sourceUrl: string
 }
 
+type LinkPreviewData = {
+  finalUrl: string
+  title: string
+  description: string
+  siteName: string
+  openGraphType: string
+}
+
+type LinkEvidenceData = {
+  preview: LinkPreviewData | null
+  readerText: string
+  metaOEmbedText: string
+}
+
+type AnalyzeEntryRuntimeConfig = {
+  metaAppId?: string
+  metaAppSecret?: string
+  metaOEmbedAccessToken?: string
+}
+
 function normalizeAnalyzeEntryRequest(payload: unknown) {
   const parsedPayload = analyzeEntryServerRequestSchema.safeParse(payload)
 
@@ -192,6 +212,280 @@ function getImageMimeTypeFromDataUrl(dataUrl: string) {
 
 function cleanText(text: string) {
   return text.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+function decodeHtmlEntities(text: string) {
+  return text
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+}
+
+function extractHtmlTagContent(html: string, tagName: string) {
+  const match = html.match(new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)</${tagName}>`, 'i'))
+  return cleanText(decodeHtmlEntities(match?.[1] ?? ''))
+}
+
+function extractHtmlMetaContent(html: string, attributeName: 'property' | 'name', attributeValue: string) {
+  const escapedValue = attributeValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const doubleQuoted = html.match(
+    new RegExp(
+      `<meta[^>]*${attributeName}=["']${escapedValue}["'][^>]*content=["']([^"']*)["'][^>]*>`,
+      'i',
+    ),
+  )
+
+  if (doubleQuoted?.[1]) {
+    return cleanText(decodeHtmlEntities(doubleQuoted[1]))
+  }
+
+  const reversed = html.match(
+    new RegExp(
+      `<meta[^>]*content=["']([^"']*)["'][^>]*${attributeName}=["']${escapedValue}["'][^>]*>`,
+      'i',
+    ),
+  )
+
+  return cleanText(decodeHtmlEntities(reversed?.[1] ?? ''))
+}
+
+async function fetchLinkPreviewData(sourceUrl: string): Promise<LinkPreviewData | null> {
+  let parsedUrl: URL
+
+  try {
+    parsedUrl = new URL(sourceUrl)
+  } catch {
+    return null
+  }
+
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    return null
+  }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 8000)
+
+  try {
+    const response = await fetch(parsedUrl.toString(), {
+      method: 'GET',
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        Accept: 'text/html,application/xhtml+xml',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+      },
+    })
+
+    if (!response.ok) {
+      return null
+    }
+
+    const contentType = response.headers.get('content-type') ?? ''
+
+    if (!contentType.toLowerCase().includes('text/html')) {
+      return null
+    }
+
+    const html = await response.text()
+    const title =
+      extractHtmlMetaContent(html, 'property', 'og:title') ||
+      extractHtmlMetaContent(html, 'name', 'twitter:title') ||
+      extractHtmlTagContent(html, 'title')
+    const description =
+      extractHtmlMetaContent(html, 'property', 'og:description') ||
+      extractHtmlMetaContent(html, 'name', 'description') ||
+      extractHtmlMetaContent(html, 'name', 'twitter:description')
+    const siteName =
+      extractHtmlMetaContent(html, 'property', 'og:site_name') ||
+      parsedUrl.hostname.replace(/^www\./i, '')
+    const openGraphType = extractHtmlMetaContent(html, 'property', 'og:type')
+
+    if (!title && !description) {
+      return null
+    }
+
+    return {
+      finalUrl: response.url || parsedUrl.toString(),
+      title,
+      description,
+      siteName,
+      openGraphType,
+    }
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+async function fetchReaderTextFromUrl(sourceUrl: string): Promise<string> {
+  let parsedUrl: URL
+
+  try {
+    parsedUrl = new URL(sourceUrl)
+  } catch {
+    return ''
+  }
+
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    return ''
+  }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 12000)
+
+  try {
+    const headers: Record<string, string> = {
+      Accept: 'text/plain',
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+      'X-Respond-With': 'text',
+    }
+
+    if (process.env.JINA_API_KEY) {
+      headers.Authorization = `Bearer ${process.env.JINA_API_KEY}`
+    }
+
+    const response = await fetch(`https://r.jina.ai/${parsedUrl.toString()}`, {
+      method: 'GET',
+      redirect: 'follow',
+      signal: controller.signal,
+      headers,
+    })
+
+    if (!response.ok) {
+      return ''
+    }
+
+    const text = cleanText(await response.text())
+
+    if (!text) {
+      return ''
+    }
+
+    return text.slice(0, 12000)
+  } catch {
+    return ''
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+function buildMetaOEmbedAccessToken(runtimeConfig?: AnalyzeEntryRuntimeConfig) {
+  const directToken =
+    runtimeConfig?.metaOEmbedAccessToken?.trim() || process.env.META_OEMBED_ACCESS_TOKEN?.trim() || ''
+
+  if (directToken) {
+    return directToken
+  }
+
+  const appId = runtimeConfig?.metaAppId?.trim() || process.env.META_APP_ID?.trim() || ''
+  const appSecret =
+    runtimeConfig?.metaAppSecret?.trim() || process.env.META_APP_SECRET?.trim() || ''
+
+  if (!appId || !appSecret) {
+    return ''
+  }
+
+  return `${appId}|${appSecret}`
+}
+
+async function fetchMetaInstagramOEmbedText(
+  sourceUrl: string,
+  runtimeConfig?: AnalyzeEntryRuntimeConfig,
+): Promise<string> {
+  let parsedUrl: URL
+
+  try {
+    parsedUrl = new URL(sourceUrl)
+  } catch {
+    return ''
+  }
+
+  if (!parsedUrl.hostname.toLowerCase().includes('instagram.com')) {
+    return ''
+  }
+
+  const accessToken = buildMetaOEmbedAccessToken(runtimeConfig)
+
+  if (!accessToken) {
+    return ''
+  }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 10000)
+
+  try {
+    const oembedUrl = new URL('https://graph.facebook.com/v23.0/instagram_oembed')
+    oembedUrl.searchParams.set('url', parsedUrl.toString())
+    oembedUrl.searchParams.set('access_token', accessToken)
+    oembedUrl.searchParams.set('omitscript', 'true')
+    oembedUrl.searchParams.set('hidecaption', 'false')
+
+    const response = await fetch(oembedUrl.toString(), {
+      method: 'GET',
+      signal: controller.signal,
+      headers: {
+        Accept: 'application/json',
+      },
+    })
+
+    if (!response.ok) {
+      return ''
+    }
+
+    const payload = (await response.json().catch(() => null)) as
+      | Record<string, unknown>
+      | null
+
+    if (!payload || typeof payload !== 'object') {
+      return ''
+    }
+
+    const title =
+      typeof payload.title === 'string' ? cleanText(payload.title) : ''
+    const authorName =
+      typeof payload.author_name === 'string' ? cleanText(payload.author_name) : ''
+    const providerName =
+      typeof payload.provider_name === 'string' ? cleanText(payload.provider_name) : ''
+    const html =
+      typeof payload.html === 'string'
+        ? cleanText(payload.html.replace(/<[^>]+>/g, ' '))
+        : ''
+
+    return cleanText(
+      [
+        providerName ? `Plataforma: ${providerName}` : '',
+        authorName ? `Autor: ${authorName}` : '',
+        title ? `Titulo o caption: ${title}` : '',
+        html ? `Embed: ${html}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    )
+  } catch {
+    return ''
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+async function fetchLinkEvidenceWithRuntimeConfig(
+  sourceUrl: string,
+  runtimeConfig?: AnalyzeEntryRuntimeConfig,
+): Promise<LinkEvidenceData> {
+  const preview = await fetchLinkPreviewData(sourceUrl)
+  const readerText = await fetchReaderTextFromUrl(sourceUrl)
+  const metaOEmbedText = await fetchMetaInstagramOEmbedText(sourceUrl, runtimeConfig)
+
+  return {
+    preview,
+    readerText,
+    metaOEmbedText,
+  }
 }
 
 function hasUsableOcrText(payload: AnalyzeEntryRequest) {
@@ -287,11 +581,24 @@ export function getAnalyzePayloadDebugSummary(rawPayload: unknown) {
   }
 }
 
-function buildPrompt(payload: AnalyzeEntryPreparedPayload) {
+function buildPrompt(payload: AnalyzeEntryPreparedPayload, linkEvidence: LinkEvidenceData | null) {
   const cleanedCombinedText = cleanText(payload.combinedExtractedText)
   const cleanedSourceName = cleanText(payload.sourceName)
   const cleanedSourceUrl = payload.sourceUrl.trim()
   const isLinkSource = payload.sourceType === 'link' && cleanedSourceUrl.length > 0
+  const linkPreview = linkEvidence?.preview ?? null
+  const linkReaderText = cleanText(linkEvidence?.readerText ?? '')
+  const metaOEmbedText = cleanText(linkEvidence?.metaOEmbedText ?? '')
+  const linkPreviewSummary =
+    linkPreview === null
+      ? null
+      : {
+          finalUrl: linkPreview.finalUrl,
+          siteName: linkPreview.siteName,
+          openGraphType: linkPreview.openGraphType,
+          title: linkPreview.title,
+          description: linkPreview.description,
+        }
   const ocrByImage = payload.ocrTextByImage
     .map((item) => {
       const suffix =
@@ -376,6 +683,15 @@ function buildPrompt(payload: AnalyzeEntryPreparedPayload) {
       2,
     ),
     '',
+    'Fetched link preview:',
+    linkPreviewSummary ? JSON.stringify(linkPreviewSummary, null, 2) : '(none)',
+    '',
+    'Fetched link reader text:',
+    linkReaderText || '(none)',
+    '',
+    'Fetched Meta oEmbed text:',
+    metaOEmbedText || '(none)',
+    '',
     'OCR input object:',
     JSON.stringify(ocrInput, null, 2),
     '',
@@ -387,15 +703,106 @@ function buildPrompt(payload: AnalyzeEntryPreparedPayload) {
   ].join('\n')
 }
 
+function hasMeaningfulAnalysisContent(result: z.infer<typeof aiAnalysisSchema>) {
+  if (cleanText(result.title).length > 0 || cleanText(result.summary).length > 0) {
+    return true
+  }
+
+  if (result.tags.some((tag) => cleanText(tag).length > 0)) {
+    return true
+  }
+
+  return Object.values(result.fields).some((value) => cleanText(value).length > 0)
+}
+
+function createLinkFallbackAnalysis(
+  result: z.infer<typeof aiAnalysisSchema>,
+  payload: AnalyzeEntryPreparedPayload,
+  linkEvidence: LinkEvidenceData | null,
+) {
+  const linkPreview = linkEvidence?.preview ?? null
+  const linkReaderText = cleanText(linkEvidence?.readerText ?? '')
+  const metaOEmbedText = cleanText(linkEvidence?.metaOEmbedText ?? '')
+
+  if (!hasUsableLinkSource(payload) || linkPreview === null || hasMeaningfulAnalysisContent(result)) {
+    if (hasUsableLinkSource(payload) && !hasMeaningfulAnalysisContent(result) && (metaOEmbedText || linkReaderText)) {
+      const fallbackLines = (metaOEmbedText || linkReaderText)
+        .split(/(?<=[.!?])\s+/)
+        .map((line) => cleanText(line))
+        .filter(Boolean)
+      const fallbackTitle = cleanText(linkPreview?.title ?? payload.sourceName)
+      const fallbackSummary = fallbackLines.slice(0, 2).join(' ').slice(0, 420)
+
+      return {
+        ...result,
+        detectedType: result.detectedType === 'other' ? 'article' : result.detectedType,
+        title: fallbackTitle,
+        summary: fallbackSummary,
+        sourceName:
+          cleanText(result.sourceName) ||
+          cleanText(payload.sourceName) ||
+          cleanText(linkPreview?.siteName ?? ''),
+        tags: result.tags.length > 0 ? result.tags : ['link'],
+        confidence: result.confidence > 0 ? result.confidence : 0.42,
+      }
+    }
+
+    return result
+  }
+
+  const fallbackTitle =
+    cleanText(linkPreview.title) ||
+    cleanText(payload.sourceName) ||
+    cleanText(linkPreview.siteName)
+  const fallbackSummary =
+    cleanText(linkPreview.description) ||
+    (fallbackTitle
+      ? `Contenido enlazado desde ${cleanText(linkPreview.siteName) || 'la web'}.`
+      : '')
+  const fallbackSourceName =
+    cleanText(result.sourceName) ||
+    cleanText(payload.sourceName) ||
+    cleanText(linkPreview.siteName)
+  const lowerHost = (() => {
+    try {
+      return new URL(linkPreview.finalUrl).hostname.toLowerCase()
+    } catch {
+      return ''
+    }
+  })()
+
+  return {
+    ...result,
+    detectedType:
+      result.detectedType === 'other' && lowerHost.includes('instagram.com')
+        ? 'article'
+        : result.detectedType,
+    title: fallbackTitle,
+    summary: fallbackSummary,
+    sourceName: fallbackSourceName,
+    tags:
+      result.tags.length > 0
+        ? result.tags
+        : lowerHost.includes('instagram.com')
+          ? ['instagram']
+          : result.tags,
+    confidence: result.confidence > 0 ? result.confidence : 0.35,
+  }
+}
+
 export async function analyzeEntryPayload(
   rawPayload: unknown,
   apiKey: string | undefined,
+  runtimeConfig?: AnalyzeEntryRuntimeConfig,
 ) {
   if (!apiKey) {
     throw new Error('Falta GROQ_API_KEY para analizar entradas.')
   }
 
   const payload = validatePayloadForAi(normalizeAnalyzeEntryRequest(rawPayload))
+  const linkEvidence = hasUsableLinkSource(payload)
+    ? await fetchLinkEvidenceWithRuntimeConfig(payload.sourceUrl, runtimeConfig)
+    : null
   const client = new Groq({
     apiKey,
     maxRetries: 1,
@@ -422,7 +829,7 @@ export async function analyzeEntryPayload(
           content: [
             {
               type: 'text',
-              text: buildPrompt(payload),
+              text: buildPrompt(payload, linkEvidence),
             },
             ...payload.images.map((image) => ({
               type: 'image_url' as const,
@@ -458,5 +865,5 @@ export async function analyzeEntryPayload(
     )
   }
 
-  return normalizeAiAnalysis(parsedContent)
+  return createLinkFallbackAnalysis(normalizeAiAnalysis(parsedContent), payload, linkEvidence)
 }

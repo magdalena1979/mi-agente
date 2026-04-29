@@ -6,7 +6,12 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 import { analyzeEntryPayload } from './api/_lib/analyze-entry.js'
 
-function analyzeEntryDevPlugin(groqApiKey: string | undefined): PluginOption {
+function analyzeEntryDevPlugin(input: {
+  groqApiKey: string | undefined
+  metaAppId?: string
+  metaAppSecret?: string
+  metaOEmbedAccessToken?: string
+}): PluginOption {
   return {
     name: 'mi-agente-analyze-entry-dev',
     configureServer(server) {
@@ -31,7 +36,11 @@ function analyzeEntryDevPlugin(groqApiKey: string | undefined): PluginOption {
             ? JSON.parse(Buffer.concat(chunks).toString('utf8'))
             : {}
 
-          const result = await analyzeEntryPayload(body, groqApiKey)
+          const result = await analyzeEntryPayload(body, input.groqApiKey, {
+            metaAppId: input.metaAppId,
+            metaAppSecret: input.metaAppSecret,
+            metaOEmbedAccessToken: input.metaOEmbedAccessToken,
+          })
 
           res.statusCode = 200
           res.setHeader('Content-Type', 'application/json')
@@ -64,7 +73,12 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       react(),
-      analyzeEntryDevPlugin(env.GROQ_API_KEY),
+      analyzeEntryDevPlugin({
+        groqApiKey: env.GROQ_API_KEY,
+        metaAppId: env.META_APP_ID,
+        metaAppSecret: env.META_APP_SECRET,
+        metaOEmbedAccessToken: env.META_OEMBED_ACCESS_TOKEN,
+      }),
       VitePWA({
         registerType: 'autoUpdate',
         devOptions: {

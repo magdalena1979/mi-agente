@@ -23,7 +23,7 @@ import {
 } from '@/features/entries/image-utils'
 import { extractTextFromImage } from '@/features/ocr/services/browser-ocr'
 import type { UserCategoryRecord } from '@/types/categories'
-import type { PendingUploadImage } from '@/types/entries'
+import { ENTRY_FIELD_KEYS, type PendingUploadImage } from '@/types/entries'
 
 type OcrImageResult = {
   name: string
@@ -61,6 +61,23 @@ function isValidUrl(value: string) {
   } catch {
     return false
   }
+}
+
+function isInstagramLink(value: string) {
+  try {
+    const url = new URL(value)
+    return url.hostname.replace(/^www\./, '').toLowerCase().includes('instagram.com')
+  } catch {
+    return false
+  }
+}
+
+function looksLikeRecipeContent(value: string) {
+  const normalizedValue = value.toLowerCase()
+
+  return ['ingredientes', 'masa', 'horno', 'receta'].some((keyword) =>
+    normalizedValue.includes(keyword),
+  )
 }
 
 function inferSourceNameFromLink(link: string) {
@@ -102,6 +119,18 @@ function formatSourceTypeLabel(sourceType: EntryFormValues['sourceType']) {
     default:
       return 'Captura'
   }
+}
+
+function hasGeneratedFormContent(values: EntryFormValues) {
+  if (values.title.trim().length > 0 || values.summary.trim().length > 0) {
+    return true
+  }
+
+  if (values.tagsText.trim().length > 0) {
+    return true
+  }
+
+  return ENTRY_FIELD_KEYS.some((fieldKey) => values[fieldKey].trim().length > 0)
 }
 
 function getHeroHighlights(
@@ -174,6 +203,8 @@ export function NewEntryPage() {
   const [pendingImages, setPendingImages] = useState<PendingUploadImage[]>([])
   const [draftEntryId, setDraftEntryId] = useState<string | null>(null)
   const [combinedExtractedText, setCombinedExtractedText] = useState('')
+  const [instagramPastedText, setInstagramPastedText] = useState('')
+  const [isInstagramTextMode, setIsInstagramTextMode] = useState(false)
   const [formDefaults, setFormDefaults] = useState(() =>
     createEmptyEntryFormValues({
       sourceType: 'screenshot',
@@ -213,10 +244,16 @@ export function NewEntryPage() {
   const heroTags = useMemo(() => parseTags(formDefaults.tagsText), [formDefaults.tagsText])
   const hasPreparedLink =
     formDefaults.sourceType === 'link' && formDefaults.sourceUrl.trim().length > 0
+  const isInstagramPreparedLink = hasPreparedLink && isInstagramLink(formDefaults.sourceUrl)
   const isUsingImages = pendingImages.length > 0
   const isUsingLink = normalizedLinkInput.length > 0 || hasPreparedLink
   const hasSourceReady = pendingImages.length > 0 || hasPreparedLink || hasValidLinkInput
   const hasAnalysisResult = analysisRunCount > 0
+  const normalizedInstagramPastedText = instagramPastedText.trim()
+  const hasInstagramSupportInput =
+    pendingImages.length > 0 || normalizedInstagramPastedText.length > 0
+  const shouldSuggestRecipeExtraction =
+    isInstagramPreparedLink && looksLikeRecipeContent(normalizedInstagramPastedText)
   const hasReviewContent =
     hasSourceReady ||
     formDefaults.title.trim().length > 0 ||
@@ -236,7 +273,7 @@ export function NewEntryPage() {
         ? 'Subi hasta dos capturas, corre la IA y revisa la ficha antes de guardarla.'
         : 'Subi capturas o usa un link y arma una ficha con el mismo estilo visual del detalle.')
   const canAccessStep2 = hasSourceReady
-  const canAccessStep3 = hasSourceReady || hasAnalysisResult
+  const canAccessStep3 = hasAnalysisResult
 
   useEffect(() => {
     previewUrlsRef.current = pendingImages.map((image) => image.previewUrl)
@@ -312,6 +349,8 @@ export function NewEntryPage() {
 
   function resetAnalysisState() {
     setCombinedExtractedText('')
+    setInstagramPastedText('')
+    setIsInstagramTextMode(false)
     setAnalysisDetectedType(null)
     setAnalysisConfidence(null)
     setAnalysisRunCount(0)
@@ -346,11 +385,17 @@ export function NewEntryPage() {
 
     setPendingImages([])
     setCombinedExtractedText('')
+    setInstagramPastedText('')
+    setIsInstagramTextMode(false)
     setAnalysisDetectedType(null)
     setAnalysisConfidence(null)
     setAnalysisRunCount(0)
     setAnalysisErrorMessage(null)
-    setLinkSuccessMessage('Link listo. Ahora podes cargar datos con IA.')
+    setLinkSuccessMessage(
+      isInstagramLink(normalizedLink)
+        ? 'Link de Instagram listo. Elige como quieres cargar el contenido.'
+        : 'Link listo. Ahora podes cargar datos con IA.',
+    )
     setSaveErrorMessage(null)
     setSaveSuccessMessage(null)
     setFormDefaults(
@@ -404,7 +449,18 @@ export function NewEntryPage() {
 
     setLinkInput('')
     setLinkSuccessMessage(null)
-    resetAnalysisState()
+    if (isInstagramPreparedLink) {
+      setCombinedExtractedText('')
+      setAnalysisDetectedType(null)
+      setAnalysisConfidence(null)
+      setAnalysisRunCount(0)
+      setAnalysisErrorMessage(null)
+      setPasteSuccessMessage(null)
+      setSaveErrorMessage(null)
+      setSaveSuccessMessage(null)
+    } else {
+      resetAnalysisState()
+    }
     setActiveStep(2)
   }
 
@@ -492,7 +548,18 @@ export function NewEntryPage() {
       return reindexImages(currentImages.filter((image) => image.id !== imageId))
     })
 
-    resetAnalysisState()
+    if (isInstagramPreparedLink) {
+      setCombinedExtractedText('')
+      setAnalysisDetectedType(null)
+      setAnalysisConfidence(null)
+      setAnalysisRunCount(0)
+      setAnalysisErrorMessage(null)
+      setPasteSuccessMessage(null)
+      setSaveErrorMessage(null)
+      setSaveSuccessMessage(null)
+    } else {
+      resetAnalysisState()
+    }
 
     if (pendingImages.length <= 1) {
       setActiveStep(1)
@@ -500,6 +567,13 @@ export function NewEntryPage() {
   }
 
   async function handleAnalyze() {
+    if (isInstagramPreparedLink && !hasInstagramSupportInput) {
+      setAnalysisErrorMessage(
+        'Para links de Instagram, sube una captura o pega el texto del post para continuar.',
+      )
+      return
+    }
+
     if (analysisRunCount >= 2) {
       setAnalysisErrorMessage('Ya usaste los 2 analisis disponibles para esta entrada.')
       return
@@ -523,13 +597,14 @@ export function NewEntryPage() {
       sourceName: formDefaults.sourceName,
       sourceUrl: formDefaults.sourceUrl,
     } as const
+    const manualSupportText = normalizedInstagramPastedText
     const imagesSelectedForAi = snapshot
       .slice()
       .sort((leftImage, rightImage) => leftImage.position - rightImage.position)
       .slice(0, 1)
     const ocrTextByImage: OcrImageResult[] = []
     const imagesForAnalysis = []
-    let nextCombinedExtractedText = ''
+    let nextCombinedExtractedText = manualSupportText
 
     if (snapshot.length > 0) {
       for (const image of snapshot) {
@@ -608,10 +683,12 @@ export function NewEntryPage() {
         )
       }
 
-      nextCombinedExtractedText = ocrTextByImage
-        .map((imageResult) => imageResult.text.trim())
-        .filter(Boolean)
-        .join('\n\n')
+      nextCombinedExtractedText = [
+        ...[manualSupportText].filter(Boolean),
+        ...ocrTextByImage
+          .map((imageResult) => imageResult.text.trim())
+          .filter(Boolean),
+      ].join('\n\n')
 
       if (imagesForAnalysis.length === 0) {
         setIsAnalyzing(false)
@@ -635,16 +712,24 @@ export function NewEntryPage() {
         sourceUrl: sourceContext.sourceUrl,
       })
 
-      setFormDefaults(
-        getEntryFormValuesFromAnalysis(
-          analysis,
-          nextCombinedExtractedText,
-          sourceContext,
-        ),
-      )
       setAnalysisDetectedType(analysis.detectedType)
       setAnalysisConfidence(analysis.confidence)
       setAnalysisRunCount((currentCount) => currentCount + 1)
+
+      const nextFormValues = getEntryFormValuesFromAnalysis(
+        analysis,
+        nextCombinedExtractedText,
+        sourceContext,
+      )
+
+      if (!hasGeneratedFormContent(nextFormValues)) {
+        setAnalysisErrorMessage(
+          'La IA termino el analisis, pero no devolvio informacion suficiente para precargar la ficha. Prueba con otra captura o revisa el link.',
+        )
+        return
+      }
+
+      setFormDefaults(nextFormValues)
       setActiveStep(3)
     } catch (error) {
       setAnalysisErrorMessage(
@@ -828,6 +913,185 @@ export function NewEntryPage() {
     }
   }, [pendingImages.length])
 
+  function renderInstagramLinkStep() {
+    return (
+      <article className="card new-entry-step-card">
+        <div className="new-entry-step-card__header">
+          <div className="section-title">
+            <span className="eyebrow">Paso 2</span>
+            <h2>Link de Instagram detectado</h2>
+            <p>
+              Instagram no permite leer automaticamente el contenido del post, pero podes
+              cargarlo en segundos.
+            </p>
+          </div>
+
+          <span className="muted">{analysisRunCount}/2 analisis usados</span>
+        </div>
+
+        <div className="instagram-link-guide">
+          <article className="instagram-link-action">
+            <div className="instagram-link-action__copy">
+              <h3>Subir captura</h3>
+              <p>Saca una captura del post y extraemos el contenido automaticamente.</p>
+            </div>
+
+            <button
+              type="button"
+              className="button"
+              disabled={pendingImages.length >= MAX_ENTRY_CAPTURES}
+              onClick={() => {
+                inputRef.current?.click()
+              }}
+            >
+              Subir captura
+            </button>
+          </article>
+
+          <article className="instagram-link-action">
+            <div className="instagram-link-action__copy">
+              <h3>Pegar texto</h3>
+              <p>Copia la descripcion del post y la analizamos.</p>
+            </div>
+
+            <button
+              type="button"
+              className="button--ghost"
+              onClick={() => {
+                setIsInstagramTextMode((currentValue) => !currentValue)
+              }}
+            >
+              Pegar texto
+            </button>
+          </article>
+
+          <article className="instagram-link-action">
+            <div className="instagram-link-action__copy">
+              <h3>Abrir en Instagram</h3>
+              <p>Abre el post en otra pestana para copiar texto o sacar una captura.</p>
+            </div>
+
+            <a
+              className="button--ghost"
+              href={formDefaults.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Abrir en Instagram
+            </a>
+          </article>
+        </div>
+
+        {isInstagramTextMode ? (
+          <label className="form-field">
+            <span>Texto del post</span>
+            <textarea
+              rows={5}
+              placeholder="Pega aqui la descripcion, ingredientes, pasos o cualquier texto del post."
+              value={instagramPastedText}
+              onChange={(event) => {
+                setInstagramPastedText(event.target.value)
+                setAnalysisErrorMessage(null)
+              }}
+            />
+          </label>
+        ) : null}
+
+        {pendingImages.length > 0 ? (
+          <div className="capture-grid capture-grid--compact">
+            {pendingImages.map((image) => (
+              <article className="capture-card" key={image.id}>
+                <img
+                  src={image.previewUrl}
+                  alt={`Captura ${image.position + 1}`}
+                  className="capture-card__image"
+                />
+                <div className="capture-card__content">
+                  <strong>Captura {image.position + 1}</strong>
+                  <button
+                    type="button"
+                    className="button--ghost button--compact"
+                    onClick={() => {
+                      handleRemoveImage(image.id)
+                    }}
+                  >
+                    Quitar
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : null}
+
+        {hasInstagramSupportInput ? (
+          <div className="new-entry-analysis-actions">
+            <button
+              type="button"
+              className="button new-entry-analysis-actions__cta"
+              disabled={isAnalyzing}
+              onClick={() => {
+                void handleAnalyze()
+              }}
+            >
+              {isAnalyzing
+                ? pendingImages.length > 0
+                  ? 'Extrayendo contenido...'
+                  : 'Analizando texto...'
+                : pendingImages.length > 0
+                  ? 'Extraer contenido automaticamente'
+                  : shouldSuggestRecipeExtraction
+                    ? 'Extraer receta automaticamente'
+                    : 'Analizar texto pegado'}
+            </button>
+          </div>
+        ) : null}
+
+        {isAnalyzing ? (
+          <div className="new-entry-analysis-status" role="status" aria-live="polite">
+            <span className="new-entry-analysis-spinner" aria-hidden="true" />
+            <div className="new-entry-analysis-status__copy">
+              <strong>
+                {pendingImages.length > 0
+                  ? 'Estamos leyendo la captura y generando info'
+                  : 'Estamos analizando el texto del post'}
+              </strong>
+              <p>
+                Cuando termine, te llevamos directo a la ficha con los datos precargados.
+              </p>
+            </div>
+          </div>
+        ) : null}
+
+        {analysisErrorMessage ? (
+          <p className="feedback feedback--error">{analysisErrorMessage}</p>
+        ) : null}
+
+        <div className="new-entry-step-card__footer">
+          <button
+            type="button"
+            className="button--ghost"
+            disabled={isAnalyzing}
+            onClick={() => {
+              setActiveStep(1)
+            }}
+          >
+            Volver
+          </button>
+          <button
+            type="button"
+            className="button"
+            disabled={!hasAnalysisResult}
+            onClick={() => {
+              setActiveStep(3)
+            }}
+          >
+            Seguir
+          </button>
+        </div>
+      </article>
+    )
+  }
+
   return (
     <section className="page page--detail page--new-entry">
       <CreateUserCategoryModal
@@ -881,7 +1145,8 @@ export function NewEntryPage() {
         <div className="new-entry-step-card__header">
           <div className="section-title">
             <span className="eyebrow">Paso 1</span>
-            <h2>Carga una captura o un link</h2>
+            <h2>Carga una captura</h2>
+            <p>(no mas de dos)</p>
           </div>
 
           <p className="muted new-entry-counts new-entry-desktop-only">
@@ -898,10 +1163,8 @@ export function NewEntryPage() {
               inputRef.current?.click()
             }}
           >
-            <span className="new-entry-toolbar__label-desktop">Elegir imagenes</span>
-            <span className="new-entry-toolbar__label-mobile">
-              Elegir imagenes ({MAX_ENTRY_CAPTURES})
-            </span>
+            <span className="new-entry-toolbar__label-desktop">Cargar captura</span>
+            <span className="new-entry-toolbar__label-mobile">Cargar captura</span>
           </button>
 
           <button
@@ -921,8 +1184,12 @@ export function NewEntryPage() {
         </p>
 
         <div className="new-entry-link-row">
+          <div className="section-title">
+            <h2>O pega un link</h2>
+          </div>
+
           <label className="form-field">
-            <span>O pega un link</span>
+            <span className="sr-only">O pega un link</span>
             <input
               type="url"
               placeholder="https://..."
@@ -933,11 +1200,6 @@ export function NewEntryPage() {
               }}
             />
           </label>
-
-          <p className="muted new-entry-source-hint">
-            Uno de los dos campos debe completarse para poder continuar. Puedes usar hasta 2
-            imagenes o un solo link.
-          </p>
         </div>
 
         {linkSuccessMessage ? (
@@ -997,6 +1259,9 @@ export function NewEntryPage() {
       ) : null}
 
       {activeStep === 2 ? (
+      isInstagramPreparedLink ? (
+        renderInstagramLinkStep()
+      ) : (
       <article className="card new-entry-step-card new-entry-step-card--analysis">
         <div className="new-entry-step-card__header">
           <div className="section-title">
@@ -1018,13 +1283,32 @@ export function NewEntryPage() {
             }}
           >
             {isAnalyzing
-              ? 'Cargando...'
+              ? hasPreparedLink
+                ? 'Generando info...'
+                : 'Analizando...'
               : analysisRunCount >= 2
                 ? 'Limite de IA alcanzado'
-                : 'Cargar datos'}
+                : hasPreparedLink
+                  ? 'Generar info'
+                  : 'Cargar datos'}
           </button>
-
         </div>
+
+        {isAnalyzing ? (
+          <div className="new-entry-analysis-status" role="status" aria-live="polite">
+            <span className="new-entry-analysis-spinner" aria-hidden="true" />
+            <div className="new-entry-analysis-status__copy">
+              <strong>
+                {hasPreparedLink
+                  ? 'Estamos generando info desde el link'
+                  : 'Estamos leyendo la captura y generando info'}
+              </strong>
+              <p>
+                Cuando termine, te llevamos directo a la ficha con los datos precargados.
+              </p>
+            </div>
+          </div>
+        ) : null}
 
         {analysisErrorMessage ? (
           <p className="feedback feedback--error">{analysisErrorMessage}</p>
@@ -1033,6 +1317,7 @@ export function NewEntryPage() {
           <button
             type="button"
             className="button--ghost"
+            disabled={isAnalyzing}
             onClick={() => {
               setActiveStep(1)
             }}
@@ -1042,15 +1327,16 @@ export function NewEntryPage() {
           <button
             type="button"
             className="button"
-            disabled={!hasPreparedLink && !hasAnalysisResult}
+            disabled={!hasAnalysisResult}
             onClick={() => {
               setActiveStep(3)
             }}
           >
-            {hasPreparedLink && !pendingImages.length ? 'Editar manualmente' : 'Seguir'}
+            Seguir
           </button>
         </div>
       </article>
+      )
       ) : null}
 
       {activeStep === 3 ? (

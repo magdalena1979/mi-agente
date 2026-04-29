@@ -408,6 +408,95 @@
   gap: 12px;
 }
 
+.instagram-link-guide,
+.instagram-link-action,
+.instagram-link-action__copy {
+  display: grid;
+}
+
+.instagram-link-guide {
+  gap: 14px;
+}
+
+.instagram-link-action {
+  gap: 14px;
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.instagram-link-action__copy {
+  gap: 6px;
+}
+
+.instagram-link-action__copy h3,
+.instagram-link-action__copy p {
+  margin: 0;
+}
+
+.instagram-link-action__copy h3 {
+  color: var(--text);
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+}
+
+.instagram-link-action__copy p {
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.instagram-link-action > .button,
+.instagram-link-action > .button--ghost {
+  width: fit-content;
+}
+
+.new-entry-analysis-status {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.new-entry-analysis-spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--magenta);
+  animation: new-entry-spinner 0.9s linear infinite;
+}
+
+.new-entry-analysis-status__copy {
+  display: grid;
+  gap: 4px;
+}
+
+.new-entry-analysis-status__copy strong,
+.new-entry-analysis-status__copy p {
+  margin: 0;
+}
+
+.new-entry-analysis-status__copy strong {
+  color: var(--text);
+  font-size: 0.96rem;
+}
+
+.new-entry-analysis-status__copy p {
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+@keyframes new-entry-spinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .new-entry-step-list {
   gap: 8px;
   flex-wrap: nowrap;
@@ -518,6 +607,11 @@
 }
 
 @media (min-width: 640px) {
+  .instagram-link-guide {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
+  }
+
   .capture-grid,
   .detail-facts,
   .detail-highlight-grid {
