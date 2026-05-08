@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, Outlet, useLocation } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 
 import BackgroundLines from '@/components/BackgroundLines'
 import { useAuth } from '@/features/auth/auth-context'
-import { NotificationsBell } from '@/features/sharing/components/NotificationsBell'
 import { env } from '@/lib/env'
 
 function getAvatarLabel(email?: string): string {
@@ -23,6 +22,8 @@ export function AppShell() {
   const [isHeaderSearchOpen, setIsHeaderSearchOpen] = useState(false)
   const [headerSearchValue, setHeaderSearchValue] = useState('')
   const headerSearchInputRef = useRef<HTMLInputElement | null>(null)
+  const accountMenuRef = useRef<HTMLDivElement | null>(null)
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false)
 
   const headerStatusText = isLoading
     ? 'Verificando sesion...'
@@ -85,6 +86,36 @@ export function AppShell() {
     headerSearchInputRef.current?.focus()
   }, [isHeaderSearchOpen])
 
+  useEffect(() => {
+    if (!isAccountMenuOpen) {
+      return
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!accountMenuRef.current?.contains(event.target as Node)) {
+        setIsAccountMenuOpen(false)
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsAccountMenuOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isAccountMenuOpen])
+
+  useEffect(() => {
+    setIsAccountMenuOpen(false)
+  }, [location.pathname])
+
   async function handleSignOut() {
     try {
       await signOut()
@@ -107,7 +138,6 @@ export function AppShell() {
     'app-shell',
     user ? 'app-shell--authenticated' : '',
     isAuthRoute ? 'app-shell--auth-route' : '',
-    isMobileViewport && user && !isAuthRoute ? 'app-shell--has-mobile-footer' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -184,27 +214,36 @@ export function AppShell() {
                   </button>
                 ) : null}
 
-                {user && !isMobileViewport ? (
-                  <>
-                    <NotificationsBell />
-
-                    <div className="app-header__avatar-block">
-                      <div className="app-header__avatar" aria-hidden="true">
+                {user ? (
+                  <div className="app-header__account-menu" ref={accountMenuRef}>
+                    <button
+                      type="button"
+                      className="app-header__avatar-button"
+                      aria-label={`Abrir menu de ${user.email?.split('@')[0] ?? 'tu cuenta'}`}
+                      aria-expanded={isAccountMenuOpen}
+                      aria-haspopup="menu"
+                      onClick={() => {
+                        setIsAccountMenuOpen((currentValue) => !currentValue)
+                      }}
+                    >
+                      <span className="app-header__avatar" aria-hidden="true">
                         {getAvatarLabel(user.email)}
-                      </div>
+                      </span>
+                    </button>
 
-                      <div className="app-header__avatar-copy">
-                        <strong>{user.email?.split('@')[0] ?? 'Tu cuenta'}</strong>
+                    {isAccountMenuOpen ? (
+                      <div className="app-header__account-dropdown" role="menu">
                         <button
                           type="button"
-                          className="app-header__logout"
+                          className="app-header__account-action"
+                          role="menuitem"
                           onClick={() => void handleSignOut()}
                         >
                           Cerrar sesion
                         </button>
                       </div>
-                    </div>
-                  </>
+                    ) : null}
+                  </div>
                 ) : null}
 
                 {!user && !isLandingRoute && headerStatusText ? (
@@ -220,41 +259,6 @@ export function AppShell() {
         <main>
           <Outlet />
         </main>
-
-        {isMobileViewport && user && !isAuthRoute ? (
-          <nav className="app-mobile-footer" aria-label="Accesos de cuenta">
-            <div className="app-mobile-footer__item">
-              <NotificationsBell />
-            </div>
-
-            <div className="app-mobile-footer__item">
-              {user ? (
-                <button
-                  type="button"
-                  className="button--ghost app-mobile-footer__session"
-                  onClick={() => void handleSignOut()}
-                >
-                  Cerrar sesion
-                </button>
-              ) : (
-                <Link className="button--ghost app-mobile-footer__session" to="/auth">
-                  Iniciar sesion
-                </Link>
-              )}
-            </div>
-
-            <div className="app-mobile-footer__item">
-              <div className="app-mobile-footer__avatar-wrap">
-                <div className="app-header__avatar" aria-hidden="true">
-                  {getAvatarLabel(user?.email)}
-                </div>
-                <span className="app-mobile-footer__avatar-label">
-                  {user?.email?.split('@')[0] ?? 'Cuenta'}
-                </span>
-              </div>
-            </div>
-          </nav>
-        ) : null}
       </div>
     </div>
   )

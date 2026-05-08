@@ -202,7 +202,6 @@ export function NewEntryPage() {
 
   const [pendingImages, setPendingImages] = useState<PendingUploadImage[]>([])
   const [draftEntryId, setDraftEntryId] = useState<string | null>(null)
-  const [combinedExtractedText, setCombinedExtractedText] = useState('')
   const [instagramPastedText, setInstagramPastedText] = useState('')
   const [isInstagramTextMode, setIsInstagramTextMode] = useState(false)
   const [formDefaults, setFormDefaults] = useState(() =>
@@ -348,7 +347,6 @@ export function NewEntryPage() {
   }, [])
 
   function resetAnalysisState() {
-    setCombinedExtractedText('')
     setInstagramPastedText('')
     setIsInstagramTextMode(false)
     setAnalysisDetectedType(null)
@@ -384,7 +382,6 @@ export function NewEntryPage() {
     }
 
     setPendingImages([])
-    setCombinedExtractedText('')
     setInstagramPastedText('')
     setIsInstagramTextMode(false)
     setAnalysisDetectedType(null)
@@ -450,7 +447,6 @@ export function NewEntryPage() {
     setLinkInput('')
     setLinkSuccessMessage(null)
     if (isInstagramPreparedLink) {
-      setCombinedExtractedText('')
       setAnalysisDetectedType(null)
       setAnalysisConfidence(null)
       setAnalysisRunCount(0)
@@ -549,7 +545,6 @@ export function NewEntryPage() {
     })
 
     if (isInstagramPreparedLink) {
-      setCombinedExtractedText('')
       setAnalysisDetectedType(null)
       setAnalysisConfidence(null)
       setAnalysisRunCount(0)
@@ -697,7 +692,6 @@ export function NewEntryPage() {
       }
     }
 
-    setCombinedExtractedText(nextCombinedExtractedText)
     setFormDefaults(
       getEntryFormValuesFromAnalysis(null, nextCombinedExtractedText, sourceContext),
     )
@@ -1348,7 +1342,6 @@ export function NewEntryPage() {
                 {analysisDetectedType ? entryTypeLabelMap[analysisDetectedType] : typeLabel}
               </span>
               <span className="detail-chip">{formatSourceTypeLabel(formDefaults.sourceType)}</span>
-              {combinedExtractedText ? <span className="detail-chip">OCR listo</span> : null}
               {formDefaults.sourceName ? (
                 <span className="detail-chip">{formDefaults.sourceName}</span>
               ) : null}

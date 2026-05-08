@@ -28,7 +28,6 @@ type EntryFormProps = {
   onDelete?: () => Promise<void> | void
   isDeleting?: boolean
   isReadOnly?: boolean
-  isStatusLocked?: boolean
   availableCategories?: UserCategoryRecord[]
   selectedCategoryIds?: string[]
   onToggleCategory?: (categoryId: string) => void
@@ -50,7 +49,6 @@ export function EntryForm({
   onDelete,
   isDeleting = false,
   isReadOnly = false,
-  isStatusLocked = false,
   availableCategories = [],
   selectedCategoryIds = [],
   onToggleCategory,
@@ -72,7 +70,7 @@ export function EntryForm({
   const visibleFields = getVisibleEntryFieldDefinitions(selectedType)
   const isSubmitDisabled = !canSubmit || isSubmitting || isDeleting
   const isLinkSource = selectedSourceType === 'link'
-  const isFormReadOnly = isReadOnly || isStatusLocked
+  const isFormReadOnly = isReadOnly
 
   useEffect(() => {
     form.reset(defaultValues)

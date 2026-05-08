@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 type CreateUserCategoryModalProps = {
   isOpen: boolean
   title?: string
-  description?: string
+  description?: string | null
   isSubmitting?: boolean
   errorMessage?: string | null
   onClose: () => void
@@ -12,8 +12,8 @@ type CreateUserCategoryModalProps = {
 
 export function CreateUserCategoryModal({
   isOpen,
-  title = 'Nueva subcategoria',
-  description = 'Estas categorias funcionan como subcategorias personales o tags tuyos para ordenar mejor tu archivo. No cambian el tipo de la entry.',
+  title = 'Agregar categoria',
+  description = null,
   isSubmitting = false,
   errorMessage,
   onClose,
@@ -41,7 +41,7 @@ export function CreateUserCategoryModal({
       >
         <div className="section-title">
           <h2 id="create-user-category-title">{title}</h2>
-          <p>{description}</p>
+          {description ? <p>{description}</p> : null}
         </div>
 
         <form

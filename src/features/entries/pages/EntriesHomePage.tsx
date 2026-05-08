@@ -792,6 +792,8 @@ export function EntriesHomePage() {
     <section className="page page--library">
       <CreateUserCategoryModal
         isOpen={isCreateCategoryModalOpen}
+        title="Agregar categoria"
+        description={null}
         isSubmitting={isSavingCategory}
         errorMessage={categoryErrorMessage}
         onClose={() => {
@@ -889,13 +891,18 @@ export function EntriesHomePage() {
 
               <button
                 type="button"
-                className="filter-chip filter-chip--add"
+                className="filter-chip filter-chip--add library-toolbar__add-category-chip"
                 onClick={() => {
                   setCategoryErrorMessage(null)
                   setIsCreateCategoryModalOpen(true)
                 }}
+                aria-label="Agregar categoria"
+                title="Agregar categoria"
               >
-                Otra
+                <span className="library-toolbar__add-category-chip-mobile" aria-hidden="true">
+                  +
+                </span>
+                <span className="library-toolbar__add-category-chip-desktop">Otra</span>
               </button>
             </div>
 

@@ -139,8 +139,6 @@ function getHeroHighlights(entry: EntryRecord) {
       break
   }
 
-  pushIfPresent('Estado', entry.status === 'draft' ? 'Borrador' : 'Revisado')
-
   return highlights.slice(0, 8)
 }
 
@@ -254,8 +252,8 @@ export function EntryDetailPage() {
   )
 
   const aiRefreshCount = entry ? getAiRefreshCount(entry) : 0
-  const canEditEntry = Boolean(entry && entry.status === 'draft')
-  const canReanalyze = Boolean(entry && entry.status === 'draft' && aiRefreshCount < 2)
+  const canEditEntry = Boolean(entry)
+  const canReanalyze = Boolean(entry && aiRefreshCount < 2)
 
   async function createAnalysisImageFromSavedCapture(image: EntryImageRecord) {
     if (!image.imageUrl) {
@@ -395,13 +393,6 @@ export function EntryDetailPage() {
   async function handleReanalyze() {
     if (!user || !entry) return
 
-    if (entry.status !== 'draft') {
-      setErrorMessage(
-        'Solo puedes volver a correr la IA cuando la entry esta en draft.',
-      )
-      return
-    }
-
     if (entryImages.length === 0) {
       setErrorMessage('Esta entry no tiene capturas para volver a analizar.')
       return
@@ -492,7 +483,7 @@ export function EntryDetailPage() {
 
     if (!canReanalyze) {
       setErrorMessage(
-        'Solo puedes agregar mas capturas mientras la entry siga en draft y con IA disponible.',
+        'Solo puedes agregar mas capturas mientras tengas IA disponible.',
       )
       event.target.value = ''
       return
@@ -630,19 +621,32 @@ export function EntryDetailPage() {
                 ) : (
                   <button
                     type="button"
-                    className="button"
+                    className="button--ghost button--icon-only detail-hero__edit-button"
+                    aria-label="Editar entrada"
+                    title="Editar entrada"
                     onClick={() => {
                       setIsEditing(true)
                       setErrorMessage(null)
                       setSuccessMessage(null)
                     }}
                   >
-                    Editar
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      className="action-icon"
+                    >
+                      <path
+                        d="M4 20h4l10-10a2.12 2.12 0 0 0-3-3L5 17v3Zm9-11 3 3"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
                   </button>
                 )
-              ) : (
-                <span className="detail-chip">Solo lectura</span>
-              )}
+              ) : null}
             </div>
           </div>
 
@@ -692,7 +696,7 @@ export function EntryDetailPage() {
             </div>
           ) : null}
 
-          {entry.status === 'draft' ? (
+          {canReanalyze ? (
             <div className="detail-hero__inline-actions detail-hero__inline-actions--bottom">
               <button
                 type="button"
@@ -727,25 +731,18 @@ export function EntryDetailPage() {
 
       </article>
 
-      <article className="card">
-        <div className="section-title">
-          <h2>Texto leido por el sistema</h2>
-          <p>Esto es lo que recuperamos desde las capturas para completar la ficha.</p>
-        </div>
+      {!isEditing && errorMessage ? (
+        <p className="feedback feedback--error">{errorMessage}</p>
+      ) : null}
+      {!isEditing && successMessage ? (
+        <p className="feedback feedback--success">{successMessage}</p>
+      ) : null}
 
-        <div className="detail-readonly detail-readonly--ocr">
-          {entry.extractedText.trim() || 'Todavia no hay texto extraido para esta entry.'}
-        </div>
-      </article>
-
+      {isEditing ? (
       <article className="card">
         <div className="section-title">
           <h2>Editar entrada</h2>
-          <p>
-            {isEditing
-              ? 'Ajusta los datos y guarda cuando este listo.'
-              : 'La ficha queda protegida hasta que actives Editar.'}
-          </p>
+          <p>Ajusta los datos y guarda cuando este listo.</p>
         </div>
 
         <EntryForm
@@ -753,7 +750,6 @@ export function EntryDetailPage() {
           isSubmitting={isSubmitting}
           isDeleting={isDeleting}
           isReadOnly={!isEditing}
-          isStatusLocked={entry.status !== 'draft'}
           showActions={isEditing}
           submitLabel="Guardar cambios"
           submitBusyLabel="Guardando..."
@@ -763,6 +759,7 @@ export function EntryDetailPage() {
           onDelete={handleDelete}
         />
       </article>
+      ) : null}
 
       <article className="card">
         <div className="section-title">
