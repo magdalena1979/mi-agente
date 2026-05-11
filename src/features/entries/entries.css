@@ -751,90 +751,6 @@
   line-height: 1;
 }
 
-.new-entry-ai-panel {
-  display: grid;
-  gap: 18px;
-  padding: 18px;
-  border-radius: 22px;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)),
-    rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-}
-
-.new-entry-ai-panel__copy {
-  display: grid;
-  gap: 8px;
-}
-
-.new-entry-ai-panel__copy h3,
-.new-entry-ai-panel__copy p {
-  margin: 0;
-}
-
-.new-entry-ai-panel__copy h3 {
-  color: var(--text);
-  font-size: clamp(1.35rem, 5vw, 1.9rem);
-  line-height: 1.05;
-  letter-spacing: -0.03em;
-}
-
-.new-entry-ai-panel__copy p {
-  color: var(--text-soft);
-  line-height: 1.6;
-}
-
-.new-entry-ai-steps {
-  display: grid;
-  gap: 10px;
-}
-
-.new-entry-ai-step {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  padding: 0 12px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.045);
-  color: var(--text-secondary);
-}
-
-.new-entry-ai-step span {
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
-  flex-shrink: 0;
-}
-
-.new-entry-ai-step--active {
-  color: var(--text);
-  background: rgba(224, 38, 128, 0.12);
-}
-
-.new-entry-ai-step--active span {
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  border-top-color: var(--magenta-hover);
-  animation: new-entry-spinner 0.9s linear infinite;
-}
-
-.new-entry-ai-step--done {
-  color: #dff8ea;
-  background: rgba(125, 211, 164, 0.12);
-}
-
-.new-entry-ai-step--done span::before {
-  content: '';
-  width: 8px;
-  height: 12px;
-  border: solid var(--success);
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg) translateY(-1px);
-}
-
 .instagram-link-guide,
 .instagram-link-action,
 .instagram-link-action__copy {
@@ -1094,11 +1010,6 @@
 }
 
 @media (min-width: 640px) {
-  .new-entry-ai-panel {
-    grid-template-columns: minmax(0, 1.05fr) minmax(260px, 0.95fr);
-    align-items: center;
-  }
-
   .new-entry-upload-stage {
     grid-template-columns: minmax(0, 1fr) minmax(220px, 0.42fr);
     align-items: center;

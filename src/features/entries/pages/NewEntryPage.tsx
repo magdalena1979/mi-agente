@@ -822,30 +822,6 @@ export function NewEntryPage() {
         ? 'Agregar segunda captura'
         : 'Capturas completas'
   const primaryPreviewUrl = pendingImages[0]?.previewUrl ?? null
-  const hasCompletedOcr =
-    pendingImages.some((image) => image.ocrStatus === 'success' || image.ocrStatus === 'error') ||
-    hasPreparedLink
-  const allImagesProcessed =
-    pendingImages.length > 0 &&
-    pendingImages.every((image) => image.ocrStatus === 'success' || image.ocrStatus === 'error')
-  const analysisMilestones = [
-    {
-      label: hasPreparedLink ? 'Leyendo fuente' : 'Leyendo captura',
-      state: hasAnalysisResult || allImagesProcessed || hasPreparedLink ? 'done' : isAnalyzing ? 'active' : 'idle',
-    },
-    {
-      label: 'Detectando plataforma',
-      state: hasAnalysisResult ? 'done' : isAnalyzing && hasCompletedOcr ? 'active' : 'idle',
-    },
-    {
-      label: 'Generando resumen',
-      state: hasAnalysisResult ? 'done' : isAnalyzing && hasCompletedOcr ? 'active' : 'idle',
-    },
-    {
-      label: 'Organizando categorias',
-      state: hasAnalysisResult ? 'done' : isAnalyzing && hasCompletedOcr ? 'active' : 'idle',
-    },
-  ]
   const stepItems: Array<{
     step: NewEntryStep
     title: string
@@ -992,7 +968,9 @@ export function NewEntryPage() {
             <div className="capture-preview-card__shade" />
             <div className="capture-preview-card__content">
               <span className="capture-preview-card__badge">Captura {image.position + 1}</span>
-              <strong>{image.ocrStatus === 'processing' ? 'Leyendo con OCR' : 'Lista'}</strong>
+              <strong>
+                {image.ocrStatus === 'processing' ? 'Generando ficha' : 'Captura cargada'}
+              </strong>
             </div>
             {interactive ? (
               <button
@@ -1386,28 +1364,6 @@ export function NewEntryPage() {
 
         {pendingImages.length > 0 ? renderCapturePreviewGrid({ compact: true }) : null}
 
-        <div className="new-entry-ai-panel">
-          <div className="new-entry-ai-panel__copy">
-            <span className="eyebrow">IA activa</span>
-            <h3>Generar ficha automatica</h3>
-            <p>
-              La IA combina OCR, contexto visual y metadatos para dejarte una ficha lista para curar.
-            </p>
-          </div>
-
-          <div className="new-entry-ai-steps" aria-label="Progreso del analisis">
-            {analysisMilestones.map((milestone) => (
-              <div
-                key={milestone.label}
-                className={`new-entry-ai-step new-entry-ai-step--${milestone.state}`}
-              >
-                <span aria-hidden="true" />
-                <strong>{milestone.label}</strong>
-              </div>
-            ))}
-          </div>
-        </div>
-
         <div className="new-entry-analysis-actions">
           <button
             type="button"
@@ -1421,11 +1377,11 @@ export function NewEntryPage() {
               ? hasPreparedLink
                 ? 'Generando ficha...'
                 : 'Analizando contenido...'
-              : analysisRunCount >= 2
+                : analysisRunCount >= 2
                 ? 'Limite de IA alcanzado'
                 : hasPreparedLink
                   ? 'Generar ficha automatica'
-                  : 'Analizar con IA'}
+                  : 'Generar ficha automatica'}
           </button>
         </div>
 
