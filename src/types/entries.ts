@@ -67,9 +67,18 @@ export type EntryImageRecord = {
   entryId: string
   imagePath: string
   imageUrl: string | null
+  thumbnailPath: string | null
+  thumbnailUrl: string | null
   position: number
   ocrText: string
   createdAt: string
+  originalWidth: number | null
+  originalHeight: number | null
+  thumbnailWidth: number | null
+  thumbnailHeight: number | null
+  originalSizeBytes: number | null
+  thumbnailSizeBytes: number | null
+  mimeType: string | null
 }
 
 export type PendingUploadImage = {

@@ -11,7 +11,7 @@ import {
   entrySourceOptions,
   type EntryFormValues,
 } from '@/features/entries/entry-form-schema'
-import type { UserCategoryRecord } from '@/types/categories'
+import type { CategoryRecord } from '@/types/categories'
 
 type EntryFormProps = {
   defaultValues: EntryFormValues
@@ -28,10 +28,10 @@ type EntryFormProps = {
   onDelete?: () => Promise<void> | void
   isDeleting?: boolean
   isReadOnly?: boolean
-  availableCategories?: UserCategoryRecord[]
+  availableCategories?: CategoryRecord[]
   selectedCategoryIds?: string[]
   onToggleCategory?: (categoryId: string) => void
-  onOpenCreateCategory?: () => void
+  onOpenManageCategories?: () => void
 }
 
 export function EntryForm({
@@ -52,7 +52,7 @@ export function EntryForm({
   availableCategories = [],
   selectedCategoryIds = [],
   onToggleCategory,
-  onOpenCreateCategory,
+  onOpenManageCategories,
 }: EntryFormProps) {
   const form = useForm<EntryFormValues>({
     resolver: zodResolver(entryFormSchema),
@@ -68,9 +68,52 @@ export function EntryForm({
     name: 'sourceType',
   })
   const visibleFields = getVisibleEntryFieldDefinitions(selectedType)
+  const primaryDetailKeys = new Set([
+    'platform',
+    'cast',
+    'genre',
+    'note',
+    'author',
+    'ingredientsText',
+    'location',
+    'date',
+    'topic',
+  ])
+  const detailFields = visibleFields.filter((field) => primaryDetailKeys.has(field.key))
+  const advancedFields = visibleFields.filter((field) => !primaryDetailKeys.has(field.key))
   const isSubmitDisabled = !canSubmit || isSubmitting || isDeleting
   const isLinkSource = selectedSourceType === 'link'
   const isFormReadOnly = isReadOnly
+
+  function renderMetadataField(field: (typeof visibleFields)[number]) {
+    return (
+      <label
+        className={
+          field.input === 'textarea'
+            ? 'form-field form-field--full'
+            : 'form-field'
+        }
+        key={field.key}
+      >
+        <span>{field.label}</span>
+        {field.input === 'textarea' ? (
+          <textarea
+            rows={field.key === 'ingredientsText' ? 5 : 4}
+            placeholder={field.placeholder}
+            disabled={isFormReadOnly}
+            {...form.register(field.key)}
+          />
+        ) : (
+          <input
+            type="text"
+            placeholder={field.placeholder}
+            disabled={isFormReadOnly}
+            {...form.register(field.key)}
+          />
+        )}
+      </label>
+    )
+  }
 
   useEffect(() => {
     form.reset(defaultValues)
@@ -120,11 +163,11 @@ export function EntryForm({
         </div>
       ) : null}
 
-      <section className="form-section">
+      <section className="form-section form-section--basic">
         <div className="form-section__header">
           <h3 className="form-section__title">Basico</h3>
           <p className="form-section__description">
-            Lo principal para reconocer este item rapido cuando vuelvas a verlo.
+            Solo lo esencial para que la ficha quede clara y facil de encontrar.
           </p>
         </div>
 
@@ -166,15 +209,46 @@ export function EntryForm({
             {...form.register('summary')}
           />
         </label>
+
+        <label className="form-field">
+          <span>Tags</span>
+          <input
+            type="text"
+            placeholder="Separados por coma"
+            disabled={isFormReadOnly}
+            {...form.register('tagsText')}
+          />
+        </label>
       </section>
 
-      <section className="form-section">
-        <div className="form-section__header">
-          <h3 className="form-section__title">Origen y organizacion</h3>
-          <p className="form-section__description">
-            Fuente, link y etiquetas para que todo quede ordenado sin esfuerzo.
-          </p>
-        </div>
+      {detailFields.length > 0 ? (
+        <details className="form-section form-section--panel" open>
+          <summary className="form-section__summary">
+            <span>
+              <strong>Detalles</strong>
+              <small>Plataforma, genero, reparto y notas utiles.</small>
+            </span>
+          </summary>
+
+          <div className="field-grid">
+            {detailFields.map((field) => renderMetadataField(field))}
+          </div>
+        </details>
+      ) : null}
+
+      <details className="form-section form-section--panel form-section--advanced">
+        <summary className="form-section__summary">
+          <span>
+            <strong>Info avanzada</strong>
+            <small>Origen, categorias y datos menos frecuentes.</small>
+          </span>
+        </summary>
+
+        {advancedFields.length > 0 ? (
+          <div className="field-grid">
+            {advancedFields.map((field) => renderMetadataField(field))}
+          </div>
+        ) : null}
 
         <div className="field-grid">
           <label className="form-field">
@@ -211,20 +285,10 @@ export function EntryForm({
           </label>
         ) : null}
 
-        <label className="form-field">
-          <span>Tags</span>
-          <input
-            type="text"
-            placeholder="Separados por coma"
-            disabled={isFormReadOnly}
-            {...form.register('tagsText')}
-          />
-        </label>
-
         <div className="form-field">
           <span>Categorias para filtrar</span>
           <p className="form-helper">
-            El tipo lo detecta la IA como libro, serie o receta. Estas categorias son tuyas y se usan en los filtros de la biblioteca. Si coincide con una categoria base, la dejamos sugerida.
+            Se usan para encontrar esta ficha dentro de tu biblioteca.
           </p>
 
           <div className="category-filter-grid category-filter-grid--form">
@@ -251,56 +315,14 @@ export function EntryForm({
               className="filter-chip filter-chip--add"
               disabled={isFormReadOnly}
               onClick={() => {
-                onOpenCreateCategory?.()
+                onOpenManageCategories?.()
               }}
             >
-              {availableCategories.length > 0 ? 'Otra' : 'Crear primera'}
+              Gestionar
             </button>
           </div>
         </div>
-      </section>
-
-      {visibleFields.length > 0 ? (
-        <section className="form-section">
-          <div className="form-section__header">
-            <h3 className="form-section__title">Detalles</h3>
-            <p className="form-section__description">
-              Datos extra para completar la ficha con el nivel de detalle que quieras.
-            </p>
-          </div>
-
-          <div className="field-grid">
-            {visibleFields.map((field) => (
-              <label
-                className={
-                  field.key === 'note'
-                    ? 'form-field form-field--full'
-                    : 'form-field'
-                }
-                key={field.key}
-              >
-                <span>{field.label}</span>
-                {field.input === 'textarea' ? (
-                  <textarea
-                    rows={field.key === 'ingredientsText' ? 5 : 4}
-                    placeholder={field.placeholder}
-                    disabled={isFormReadOnly}
-                    {...form.register(field.key)}
-                  />
-                ) : (
-                  <input
-                    type="text"
-                    placeholder={field.placeholder}
-                    disabled={isFormReadOnly}
-                    {...form.register(field.key)}
-                  />
-                )}
-              </label>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
+      </details>
     </form>
   )
 }

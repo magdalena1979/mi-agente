@@ -1,4 +1,4 @@
-import type { UserCategoryRecord } from '@/types/categories'
+import type { CategoryRecord } from '@/types/categories'
 import type { EntryType } from '@/types/entries'
 
 const entryTypeToDefaultCategoryKey: Partial<Record<EntryType, string>> = {
@@ -17,7 +17,7 @@ export function getSuggestedCategoryKeyForEntryType(type: EntryType) {
 }
 
 export function findSuggestedCategoryForEntryType(
-  categories: UserCategoryRecord[],
+  categories: CategoryRecord[],
   type: EntryType,
 ) {
   const suggestedCategoryKey = getSuggestedCategoryKeyForEntryType(type)

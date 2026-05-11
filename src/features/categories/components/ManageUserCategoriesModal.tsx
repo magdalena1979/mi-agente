@@ -1,12 +1,15 @@
-import type { UserCategoryRecord } from '@/types/categories'
+import { useEffect, useState } from 'react'
+
+import type { CategoryRecord } from '@/types/categories'
 
 type ManageUserCategoriesModalProps = {
   isOpen: boolean
-  categories: UserCategoryRecord[]
+  categories: CategoryRecord[]
   deletingCategoryId?: string | null
   errorMessage?: string | null
   onClose: () => void
-  onDelete: (category: UserCategoryRecord) => Promise<void> | void
+  onDelete: (category: CategoryRecord) => Promise<void> | void
+  onCreate?: (name: string) => Promise<void> | void
 }
 
 export function ManageUserCategoriesModal({
@@ -16,7 +19,15 @@ export function ManageUserCategoriesModal({
   errorMessage,
   onClose,
   onDelete,
+  onCreate,
 }: ManageUserCategoriesModalProps) {
+  const [newCategoryName, setNewCategoryName] = useState('')
+
+  useEffect(() => {
+    if (!isOpen) {
+      setNewCategoryName('')
+    }
+  }, [isOpen])
   if (!isOpen) {
     return null
   }
@@ -30,17 +41,16 @@ export function ManageUserCategoriesModal({
         aria-labelledby="manage-user-categories-title"
       >
         <div className="section-title">
-          <h2 id="manage-user-categories-title">Editar subcategorias</h2>
+          <h2 id="manage-user-categories-title">Gestionar categorias</h2>
           <p>
-            Estas son tus subcategorias o tags personales. Si borras una, se saca de tu lista y
-            tambien de las entries donde la estabas usando.
+            Estas son las categorias que tienes asignadas. Puedes agregar nuevas o eliminar las que no uses.
           </p>
         </div>
 
         {errorMessage ? <p className="feedback feedback--error">{errorMessage}</p> : null}
 
         {categories.length === 0 ? (
-          <p className="muted">Todavia no tenes subcategorias personales.</p>
+          <p className="muted">Todavia no tienes categorias asignadas.</p>
         ) : (
           <div className="category-manage-list">
             {categories.map((category) => (
@@ -52,10 +62,10 @@ export function ManageUserCategoriesModal({
                   className="button--subtle-danger button--icon-only"
                   aria-label={
                     deletingCategoryId === category.id
-                      ? `Borrando ${category.name}`
-                      : `Borrar ${category.name}`
+                      ? `Eliminando ${category.name}`
+                      : `Eliminar ${category.name}`
                   }
-                  title="Borrar subcategoria"
+                  title="Eliminar categoria"
                   disabled={deletingCategoryId === category.id}
                   onClick={() => {
                     void onDelete(category)
@@ -85,7 +95,34 @@ export function ManageUserCategoriesModal({
           </div>
         )}
 
+        {onCreate && (
+          <label className="form-field">
+            <span>Agregar nueva categoria</span>
+            <input
+              type="text"
+              placeholder="Ej. K-dramas, Ideas para casa"
+              value={newCategoryName}
+              onChange={(event) => {
+                setNewCategoryName(event.target.value)
+              }}
+            />
+          </label>
+        )}
+
         <div className="entry-form__actions">
+          {onCreate && newCategoryName.trim() && (
+            <button
+              type="button"
+              className="button"
+              onClick={() => {
+                void onCreate(newCategoryName.trim())
+                setNewCategoryName('')
+              }}
+            >
+              Agregar
+            </button>
+          )}
+
           <button
             type="button"
             className="button--ghost"

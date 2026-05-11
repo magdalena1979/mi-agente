@@ -1,15 +1,20 @@
-export type UserCategoryRecord = {
+export type CategoryRecord = {
   id: string
-  userId: string
   name: string
   normalizedName: string
   createdAt: string
 }
 
-export type EntryUserCategoryRecord = {
+export type UserCategoryRecord = {
+  userId: string
+  categoryId: string
+  createdAt: string
+}
+
+export type EntryCategoryRecord = {
   entryId: string
   userId: string
-  userCategoryId: string
+  categoryId: string
   createdAt: string
 }
 

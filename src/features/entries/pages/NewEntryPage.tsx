@@ -4,8 +4,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import { analyzeEntry } from '@/features/ai/analyze-entry'
 import { useAuth } from '@/features/auth/auth-context'
 import { findSuggestedCategoryForEntryType } from '@/features/categories/category-mapping'
-import { createUserCategory, listUserCategories, replaceEntryUserCategories } from '@/features/categories/categories-api'
-import { CreateUserCategoryModal } from '@/features/categories/components/CreateUserCategoryModal'
+import { createUserCategory, listUserCategories, replaceEntryCategories, deleteUserCategory } from '@/features/categories/categories-api'
+import { ManageUserCategoriesModal } from '@/features/categories/components/ManageUserCategoriesModal'
 import { EntryForm } from '@/features/entries/components/EntryForm'
 import { entryTypeOptions } from '@/features/entries/config/entry-type-config'
 import { createEntry, updateEntry } from '@/features/entries/entries-api'
@@ -22,7 +22,7 @@ import {
   getAnalysisImageResizeOptions,
 } from '@/features/entries/image-utils'
 import { extractTextFromImage } from '@/features/ocr/services/browser-ocr'
-import type { UserCategoryRecord } from '@/types/categories'
+import type { CategoryRecord } from '@/types/categories'
 import { ENTRY_FIELD_KEYS, type PendingUploadImage } from '@/types/entries'
 
 type OcrImageResult = {
@@ -223,16 +223,17 @@ export function NewEntryPage() {
   const [isPastingImage, setIsPastingImage] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeStep, setActiveStep] = useState<NewEntryStep>(1)
-  const [availableCategories, setAvailableCategories] = useState<UserCategoryRecord[]>([])
+  const [availableCategories, setAvailableCategories] = useState<CategoryRecord[]>([])
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([])
-  const [isCreateCategoryModalOpen, setIsCreateCategoryModalOpen] = useState(false)
-  const [isSavingCategory, setIsSavingCategory] = useState(false)
+  const [isManageCategoriesModalOpen, setIsManageCategoriesModalOpen] = useState(false)
+
   const [categoryErrorMessage, setCategoryErrorMessage] = useState<string | null>(null)
+  const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null)
   const normalizedLinkInput = linkInput.trim()
   const hasValidLinkInput = isValidUrl(normalizedLinkInput)
 
   const typeLabel = entryTypeLabelMap[formDefaults.type] ?? 'Entrada'
-  const suggestedCategory = useMemo(
+  const suggestedCategory = useMemo<CategoryRecord | null>(
     () => findSuggestedCategoryForEntryType(availableCategories, formDefaults.type),
     [availableCategories, formDefaults.type],
   )
@@ -790,7 +791,7 @@ export function NewEntryPage() {
         await replaceEntryImages(entry.id, user.id, pendingImages)
       }
 
-      await replaceEntryUserCategories({
+      await replaceEntryCategories({
         entryId: entry.id,
         userId: user.id,
         categoryIds: selectedCategoryIds,
@@ -813,6 +814,38 @@ export function NewEntryPage() {
       : null
   const canSubmitEntry = formDefaults.sourceType === 'link' || pendingImages.length > 0
   const canAnalyzeWithAi = hasSourceReady && analysisRunCount < 2
+  const captureProgressLabel = `${pendingImages.length} de ${MAX_ENTRY_CAPTURES} capturas cargadas`
+  const uploadCtaLabel =
+    pendingImages.length === 0
+      ? 'Cargar primera captura'
+      : pendingImages.length === 1
+        ? 'Agregar segunda captura'
+        : 'Capturas completas'
+  const primaryPreviewUrl = pendingImages[0]?.previewUrl ?? null
+  const hasCompletedOcr =
+    pendingImages.some((image) => image.ocrStatus === 'success' || image.ocrStatus === 'error') ||
+    hasPreparedLink
+  const allImagesProcessed =
+    pendingImages.length > 0 &&
+    pendingImages.every((image) => image.ocrStatus === 'success' || image.ocrStatus === 'error')
+  const analysisMilestones = [
+    {
+      label: hasPreparedLink ? 'Leyendo fuente' : 'Leyendo captura',
+      state: hasAnalysisResult || allImagesProcessed || hasPreparedLink ? 'done' : isAnalyzing ? 'active' : 'idle',
+    },
+    {
+      label: 'Detectando plataforma',
+      state: hasAnalysisResult ? 'done' : isAnalyzing && hasCompletedOcr ? 'active' : 'idle',
+    },
+    {
+      label: 'Generando resumen',
+      state: hasAnalysisResult ? 'done' : isAnalyzing && hasCompletedOcr ? 'active' : 'idle',
+    },
+    {
+      label: 'Organizando categorias',
+      state: hasAnalysisResult ? 'done' : isAnalyzing && hasCompletedOcr ? 'active' : 'idle',
+    },
+  ]
   const stepItems: Array<{
     step: NewEntryStep
     title: string
@@ -852,7 +885,6 @@ export function NewEntryPage() {
       return
     }
 
-    setIsSavingCategory(true)
     setCategoryErrorMessage(null)
 
     try {
@@ -869,13 +901,47 @@ export function NewEntryPage() {
       setSelectedCategoryIds((currentIds) =>
         currentIds.includes(nextCategory.id) ? currentIds : [...currentIds, nextCategory.id],
       )
-      setIsCreateCategoryModalOpen(false)
     } catch (error) {
       setCategoryErrorMessage(
-        getErrorMessage(error, 'No pudimos guardar esta subcategoria personal.'),
+        getErrorMessage(error, 'No pudimos guardar esta categoria.'),
+      )
+    }
+  }
+
+  async function handleDeleteCategory(category: CategoryRecord) {
+    if (!user) {
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Vas a quitar "${category.name}" de tus categorias asignadas.`,
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    setDeletingCategoryId(category.id)
+    setCategoryErrorMessage(null)
+
+    try {
+      await deleteUserCategory({
+        userId: user.id,
+        categoryId: category.id,
+      })
+
+      setAvailableCategories((currentCategories) =>
+        currentCategories.filter((c) => c.id !== category.id),
+      )
+      setSelectedCategoryIds((currentIds) =>
+        currentIds.filter((id) => id !== category.id),
+      )
+    } catch (error) {
+      setCategoryErrorMessage(
+        getErrorMessage(error, 'No se pudo eliminar la categoria.'),
       )
     } finally {
-      setIsSavingCategory(false)
+      setDeletingCategoryId(null)
     }
   }
 
@@ -906,6 +972,59 @@ export function NewEntryPage() {
       window.removeEventListener('paste', handlePaste)
     }
   }, [pendingImages.length])
+
+  function renderCapturePreviewGrid(options: { compact?: boolean; interactive?: boolean } = {}) {
+    const { compact = false, interactive = true } = options
+
+    if (pendingImages.length === 0) {
+      return null
+    }
+
+    return (
+      <div className={compact ? 'capture-strip capture-strip--compact' : 'capture-strip'}>
+        {pendingImages.map((image) => (
+          <article className="capture-preview-card" key={image.id}>
+            <img
+              src={image.previewUrl}
+              alt={`Captura ${image.position + 1}`}
+              className="capture-preview-card__image"
+            />
+            <div className="capture-preview-card__shade" />
+            <div className="capture-preview-card__content">
+              <span className="capture-preview-card__badge">Captura {image.position + 1}</span>
+              <strong>{image.ocrStatus === 'processing' ? 'Leyendo con OCR' : 'Lista'}</strong>
+            </div>
+            {interactive ? (
+              <button
+                type="button"
+                className="capture-preview-card__remove"
+                aria-label={`Quitar captura ${image.position + 1}`}
+                onClick={() => {
+                  handleRemoveImage(image.id)
+                }}
+              >
+                Quitar
+              </button>
+            ) : null}
+          </article>
+        ))}
+
+        {interactive && pendingImages.length < MAX_ENTRY_CAPTURES ? (
+          <button
+            type="button"
+            className="capture-preview-card capture-preview-card--add"
+            disabled={isUsingLink}
+            onClick={() => {
+              inputRef.current?.click()
+            }}
+          >
+            <span className="capture-preview-card__plus">+</span>
+            <strong>Agregar segunda captura</strong>
+          </button>
+        ) : null}
+      </div>
+    )
+  }
 
   function renderInstagramLinkStep() {
     return (
@@ -991,31 +1110,7 @@ export function NewEntryPage() {
           </label>
         ) : null}
 
-        {pendingImages.length > 0 ? (
-          <div className="capture-grid capture-grid--compact">
-            {pendingImages.map((image) => (
-              <article className="capture-card" key={image.id}>
-                <img
-                  src={image.previewUrl}
-                  alt={`Captura ${image.position + 1}`}
-                  className="capture-card__image"
-                />
-                <div className="capture-card__content">
-                  <strong>Captura {image.position + 1}</strong>
-                  <button
-                    type="button"
-                    className="button--ghost button--compact"
-                    onClick={() => {
-                      handleRemoveImage(image.id)
-                    }}
-                  >
-                    Quitar
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : null}
+        {renderCapturePreviewGrid({ compact: true })}
 
         {hasInstagramSupportInput ? (
           <div className="new-entry-analysis-actions">
@@ -1046,12 +1141,10 @@ export function NewEntryPage() {
             <div className="new-entry-analysis-status__copy">
               <strong>
                 {pendingImages.length > 0
-                  ? 'Estamos leyendo la captura y generando info'
-                  : 'Estamos analizando el texto del post'}
+                  ? 'Analizando contenido con IA'
+                  : 'Analizando texto con IA'}
               </strong>
-              <p>
-                Cuando termine, te llevamos directo a la ficha con los datos precargados.
-              </p>
+              <p>OCR, deteccion y resumen trabajan juntos para armar la ficha.</p>
             </div>
           </div>
         ) : null}
@@ -1088,15 +1181,17 @@ export function NewEntryPage() {
 
   return (
     <section className="page page--detail page--new-entry">
-      <CreateUserCategoryModal
-        isOpen={isCreateCategoryModalOpen}
-        isSubmitting={isSavingCategory}
+      <ManageUserCategoriesModal
+        isOpen={isManageCategoriesModalOpen}
+        categories={availableCategories}
+        deletingCategoryId={deletingCategoryId}
         errorMessage={categoryErrorMessage}
         onClose={() => {
-          setIsCreateCategoryModalOpen(false)
+          setIsManageCategoriesModalOpen(false)
           setCategoryErrorMessage(null)
         }}
-        onSubmit={handleCreateCategory}
+        onDelete={handleDeleteCategory}
+        onCreate={handleCreateCategory}
       />
 
       <div className="detail-back-row">
@@ -1124,6 +1219,11 @@ export function NewEntryPage() {
             disabled={step.disabled}
             onClick={() => {
               if (!step.disabled) {
+                if (step.step === 2 && !pendingImages.length && hasValidLinkInput && !hasPreparedLink) {
+                  handleUseLink()
+                  return
+                }
+
                 setActiveStep(step.step)
               }
             }}
@@ -1135,46 +1235,91 @@ export function NewEntryPage() {
       </section>
 
       {activeStep === 1 ? (
-      <article className="card new-entry-step-card">
+      <article className="card new-entry-step-card new-entry-step-card--upload">
         <div className="new-entry-step-card__header">
           <div className="section-title">
             <span className="eyebrow">Paso 1</span>
-            <h2>Carga una captura</h2>
-            <p>(no mas de dos)</p>
+            <h2>Material visual</h2>
+            <p>Subi hasta dos capturas. La preview aparece al instante y queda lista para IA/OCR.</p>
           </div>
 
-          <p className="muted new-entry-counts new-entry-desktop-only">
-            {pendingImages.length}/{MAX_ENTRY_CAPTURES} capturas cargadas
-          </p>
+          <div className="new-entry-upload-meter" aria-label={captureProgressLabel}>
+            <strong>{captureProgressLabel}</strong>
+            <span>
+              {Array.from({ length: MAX_ENTRY_CAPTURES }).map((_, index) => (
+                <i
+                  key={index}
+                  className={
+                    index < pendingImages.length
+                      ? 'new-entry-upload-meter__dot new-entry-upload-meter__dot--filled'
+                      : 'new-entry-upload-meter__dot'
+                  }
+                />
+              ))}
+            </span>
+          </div>
         </div>
 
-        <div className="new-entry-toolbar">
+        <div className="new-entry-upload-stage">
           <button
             type="button"
-            className="button"
+            className={
+              pendingImages.length > 0
+                ? 'new-entry-dropzone new-entry-dropzone--has-preview'
+                : 'new-entry-dropzone'
+            }
             disabled={pendingImages.length >= MAX_ENTRY_CAPTURES || isUsingLink}
             onClick={() => {
               inputRef.current?.click()
             }}
           >
-            <span className="new-entry-toolbar__label-desktop">Cargar captura</span>
-            <span className="new-entry-toolbar__label-mobile">Cargar captura</span>
+            {primaryPreviewUrl ? (
+              <img
+                src={primaryPreviewUrl}
+                alt="Preview de la primera captura"
+                className="new-entry-dropzone__image"
+              />
+            ) : null}
+            <span className="new-entry-dropzone__overlay" />
+            <span className="new-entry-dropzone__content">
+              <span className="new-entry-dropzone__icon" aria-hidden="true" />
+              <strong>{uploadCtaLabel}</strong>
+              <small>
+                {pendingImages.length > 0
+                  ? 'La captura ya esta cargada. Podes sumar una mas o continuar.'
+                  : 'Arrastra, selecciona o pega una captura desde el portapapeles.'}
+              </small>
+            </span>
           </button>
 
-          <button
-            type="button"
-            className="button--ghost new-entry-desktop-only"
-            disabled={isPastingImage || pendingImages.length >= MAX_ENTRY_CAPTURES || isUsingLink}
-            onClick={() => {
-              void handlePasteImageFromClipboard()
-            }}
-          >
-            {isPastingImage ? 'Pegando...' : 'Pegar imagen'}
-          </button>
+          <div className="new-entry-toolbar">
+            <button
+              type="button"
+              className="button"
+              disabled={pendingImages.length >= MAX_ENTRY_CAPTURES || isUsingLink}
+              onClick={() => {
+                inputRef.current?.click()
+              }}
+            >
+              <span className="new-entry-toolbar__label-desktop">{uploadCtaLabel}</span>
+              <span className="new-entry-toolbar__label-mobile">{uploadCtaLabel}</span>
+            </button>
+
+            <button
+              type="button"
+              className="button--ghost new-entry-desktop-only"
+              disabled={isPastingImage || pendingImages.length >= MAX_ENTRY_CAPTURES || isUsingLink}
+              onClick={() => {
+                void handlePasteImageFromClipboard()
+              }}
+            >
+              {isPastingImage ? 'Pegando...' : 'Pegar imagen'}
+            </button>
+          </div>
         </div>
 
         <p className="muted new-entry-desktop-only">
-          Usa `Pegar imagen` o el atajo `Ctrl+V` despues de copiar una captura.
+          Usa Pegar imagen o Ctrl+V despues de copiar una captura.
         </p>
 
         <div className="new-entry-link-row">
@@ -1203,35 +1348,7 @@ export function NewEntryPage() {
           <p className="feedback feedback--success">{pasteSuccessMessage}</p>
         ) : null}
 
-        {pendingImages.length === 0 ? (
-          <p className="muted new-entry-desktop-only">
-            Todavia no hay capturas cargadas para esta entrada.
-          </p>
-        ) : (
-          <div className="capture-grid">
-            {pendingImages.map((image) => (
-              <article className="capture-card" key={image.id}>
-                <img
-                  src={image.previewUrl}
-                  alt={`Captura ${image.position + 1}`}
-                  className="capture-card__image"
-                />
-                <div className="capture-card__content">
-                  <strong>Captura {image.position + 1}</strong>
-                  <button
-                    type="button"
-                    className="button--ghost button--compact"
-                    onClick={() => {
-                      handleRemoveImage(image.id)
-                    }}
-                  >
-                    Quitar
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
+        {renderCapturePreviewGrid()}
         <div className="new-entry-step-card__footer">
           <button
             type="button"
@@ -1260,11 +1377,35 @@ export function NewEntryPage() {
         <div className="new-entry-step-card__header">
           <div className="section-title">
             <span className="eyebrow">Paso 2</span>
-            <h2>Corre la IA</h2>
-            <p>Cuando ya cargaste la captura, corre el análisis para que complete la ficha por vos.</p>
+            <h2>Analisis IA/OCR</h2>
+            <p>Refind lee el contenido, detecta la plataforma y genera una ficha editable.</p>
           </div>
 
           <span className="muted">{analysisRunCount}/2 analisis usados</span>
+        </div>
+
+        {pendingImages.length > 0 ? renderCapturePreviewGrid({ compact: true }) : null}
+
+        <div className="new-entry-ai-panel">
+          <div className="new-entry-ai-panel__copy">
+            <span className="eyebrow">IA activa</span>
+            <h3>Generar ficha automatica</h3>
+            <p>
+              La IA combina OCR, contexto visual y metadatos para dejarte una ficha lista para curar.
+            </p>
+          </div>
+
+          <div className="new-entry-ai-steps" aria-label="Progreso del analisis">
+            {analysisMilestones.map((milestone) => (
+              <div
+                key={milestone.label}
+                className={`new-entry-ai-step new-entry-ai-step--${milestone.state}`}
+              >
+                <span aria-hidden="true" />
+                <strong>{milestone.label}</strong>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="new-entry-analysis-actions">
@@ -1278,13 +1419,13 @@ export function NewEntryPage() {
           >
             {isAnalyzing
               ? hasPreparedLink
-                ? 'Generando info...'
-                : 'Analizando...'
+                ? 'Generando ficha...'
+                : 'Analizando contenido...'
               : analysisRunCount >= 2
                 ? 'Limite de IA alcanzado'
                 : hasPreparedLink
-                  ? 'Generar info'
-                  : 'Cargar datos'}
+                  ? 'Generar ficha automatica'
+                  : 'Analizar con IA'}
           </button>
         </div>
 
@@ -1294,12 +1435,10 @@ export function NewEntryPage() {
             <div className="new-entry-analysis-status__copy">
               <strong>
                 {hasPreparedLink
-                  ? 'Estamos generando info desde el link'
-                  : 'Estamos leyendo la captura y generando info'}
+                  ? 'Detectando informacion desde el link'
+                  : 'Leyendo la captura con OCR e IA'}
               </strong>
-              <p>
-                Cuando termine, te llevamos directo a la ficha con los datos precargados.
-              </p>
+              <p>Cuando termine, pasas directo a una ficha visual con los datos precargados.</p>
             </div>
           </div>
         ) : null}
@@ -1337,6 +1476,14 @@ export function NewEntryPage() {
       <article className="card new-entry-step-card">
         {hasReviewContent ? (
           <div className="new-entry-review-card">
+            <div className="new-entry-review-card__media" aria-hidden="true">
+              {primaryPreviewUrl ? (
+                <img src={primaryPreviewUrl} alt="" />
+              ) : (
+                <span />
+              )}
+            </div>
+
             <div className="detail-hero__eyebrow">
               <span className="entry-card__type">
                 {analysisDetectedType ? entryTypeLabelMap[analysisDetectedType] : typeLabel}
@@ -1388,22 +1535,9 @@ export function NewEntryPage() {
               <div className="new-entry-support-block">
                 <div className="section-title new-entry-support-block__header">
                   <h3>Capturas cargadas</h3>
-                  <p>Quedan abajo para revisar sin tapar la informacion principal.</p>
+                  <p>Material visual usado por IA/OCR.</p>
                 </div>
-                <div className="capture-grid capture-grid--compact">
-                  {pendingImages.map((image) => (
-                    <article className="capture-card" key={image.id}>
-                      <img
-                        src={image.previewUrl}
-                        alt={`Captura ${image.position + 1}`}
-                        className="capture-card__image"
-                      />
-                      <div className="capture-card__content">
-                        <strong>Captura {image.position + 1}</strong>
-                      </div>
-                    </article>
-                  ))}
-                </div>
+                {renderCapturePreviewGrid({ compact: true, interactive: false })}
               </div>
             ) : null}
           </div>
@@ -1424,9 +1558,9 @@ export function NewEntryPage() {
           availableCategories={availableCategories}
           selectedCategoryIds={selectedCategoryIds}
           onToggleCategory={handleToggleCategory}
-          onOpenCreateCategory={() => {
+          onOpenManageCategories={() => {
             setCategoryErrorMessage(null)
-            setIsCreateCategoryModalOpen(true)
+            setIsManageCategoriesModalOpen(true)
           }}
           onSubmit={handleSave}
         />

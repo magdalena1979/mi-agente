@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import {
   createManyUserCategories,
   createUserCategory,
   deleteUserCategory,
-  listEntryUserCategories,
+  listEntryCategories,
   listUserCategories,
 } from '@/features/categories/categories-api'
 import { getSuggestedCategoryKeyForEntryType } from '@/features/categories/category-mapping'
@@ -17,11 +17,12 @@ import {
   markCategorySetupModalSeen,
 } from '@/features/auth/auth-preferences'
 import { useAuth } from '@/features/auth/auth-context'
-import { DEFAULT_USER_CATEGORY_NAMES, type UserCategoryRecord } from '@/types/categories'
+import { DEFAULT_USER_CATEGORY_NAMES, type CategoryRecord, type EntryCategoryRecord } from '@/types/categories'
 import { entryTypeOptions } from '@/features/entries/config/entry-type-config'
 import { deleteEntry, listEntries, updateEntry } from '@/features/entries/entries-api'
+import { listEntryImagesForEntries } from '@/features/entries/entry-images-api'
 import { listEntryUserMarks, upsertEntryUserMark } from '@/features/sharing/sharing-api'
-import type { EntryRecord, EntryType, EntryUserMarkRecord } from '@/types/entries'
+import type { EntryImageRecord, EntryRecord, EntryType, EntryUserMarkRecord } from '@/types/entries'
 
 const PAGE_SIZE = 20
 const MOBILE_SWIPE_ACTIONS_WIDTH = 216
@@ -121,8 +122,9 @@ export function EntriesHomePage() {
   const suggestedCategoryNames = useMemo(() => [...DEFAULT_USER_CATEGORY_NAMES], [])
   const [entries, setEntries] = useState<EntryRecord[]>([])
   const [entryMarksById, setEntryMarksById] = useState<Record<string, EntryUserMarkRecord>>({})
-  const [userCategories, setUserCategories] = useState<UserCategoryRecord[]>([])
+  const [userCategories, setUserCategories] = useState<CategoryRecord[]>([])
   const [entryCategoryIdsByEntryId, setEntryCategoryIdsByEntryId] = useState<Record<string, string[]>>({})
+  const [entryImagesByEntryId, setEntryImagesByEntryId] = useState<Record<string, EntryImageRecord[]>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -148,12 +150,43 @@ export function EntriesHomePage() {
   const [dragOffsetX, setDragOffsetX] = useState(0)
   const userCategoriesById = useMemo(
     () =>
-      userCategories.reduce<Record<string, UserCategoryRecord>>((accumulator, category) => {
+      userCategories.reduce<Record<string, CategoryRecord>>((accumulator, category) => {
         accumulator[category.id] = category
         return accumulator
       }, {}),
     [userCategories],
   )
+
+  const longPressTimerRef = useRef<number | null>(null)
+  const skipCategoryChipClickRef = useRef(false)
+  const [deleteModeCategoryId, setDeleteModeCategoryId] = useState<string | null>(null)
+
+  function clearCategoryLongPressTimer() {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
+  }
+
+  function handleCategoryChipTouchStart(categoryId: string) {
+    clearCategoryLongPressTimer()
+    skipCategoryChipClickRef.current = false
+
+    longPressTimerRef.current = window.setTimeout(() => {
+      setDeleteModeCategoryId(categoryId)
+      skipCategoryChipClickRef.current = true
+    }, 2000)
+  }
+
+  function handleCategoryChipTouchEnd() {
+    clearCategoryLongPressTimer()
+  }
+
+  useEffect(() => {
+    return () => {
+      clearCategoryLongPressTimer()
+    }
+  }, [])
 
   useEffect(() => {
     let ignore = false
@@ -246,6 +279,46 @@ export function EntriesHomePage() {
   useEffect(() => {
     let ignore = false
 
+    async function loadEntryImages() {
+      if (!user || entries.length === 0) {
+        if (!ignore) {
+          setEntryImagesByEntryId({})
+        }
+        return
+      }
+
+      try {
+        const images = await listEntryImagesForEntries(entries.map((entry) => entry.id))
+
+        if (!ignore) {
+          setEntryImagesByEntryId(
+            images.reduce<Record<string, EntryImageRecord[]>>((accumulator, image) => {
+              accumulator[image.entryId] = [
+                ...(accumulator[image.entryId] ?? []),
+                image,
+              ]
+
+              return accumulator
+            }, {}),
+          )
+        }
+      } catch {
+        if (!ignore) {
+          setEntryImagesByEntryId({})
+        }
+      }
+    }
+
+    void loadEntryImages()
+
+    return () => {
+      ignore = true
+    }
+  }, [entries, user])
+
+  useEffect(() => {
+    let ignore = false
+
     async function loadMarks() {
       if (!user || entries.length === 0) {
         if (!ignore) {
@@ -298,17 +371,17 @@ export function EntriesHomePage() {
       }
 
       try {
-        const assignments = await listEntryUserCategories(
+        const assignments = await listEntryCategories(
           user.id,
           entries.map((entry) => entry.id),
         )
 
         if (!ignore) {
           setEntryCategoryIdsByEntryId(
-            assignments.reduce<Record<string, string[]>>((accumulator, assignment) => {
+            assignments.reduce<Record<string, string[]>>((accumulator: Record<string, string[]>, assignment: EntryCategoryRecord) => {
               accumulator[assignment.entryId] = [
                 ...(accumulator[assignment.entryId] ?? []),
-                assignment.userCategoryId,
+                assignment.categoryId,
               ]
 
               return accumulator
@@ -631,14 +704,14 @@ export function EntriesHomePage() {
       return {}
     }
 
-    const assignments = await listEntryUserCategories(
+    const assignments = await listEntryCategories(
       user.id,
       entries.map((entry) => entry.id),
     )
-    const nextAssignments = assignments.reduce<Record<string, string[]>>((accumulator, assignment) => {
+    const nextAssignments = assignments.reduce<Record<string, string[]>>((accumulator: Record<string, string[]>, assignment: EntryCategoryRecord) => {
       accumulator[assignment.entryId] = [
         ...(accumulator[assignment.entryId] ?? []),
-        assignment.userCategoryId,
+        assignment.categoryId,
       ]
 
       return accumulator
@@ -731,13 +804,13 @@ export function EntriesHomePage() {
     }
   }
 
-  async function handleDeleteCategory(category: UserCategoryRecord) {
+  async function handleDeleteCategory(category: CategoryRecord) {
     if (!user) {
       return
     }
 
     const confirmed = window.confirm(
-      `Vas a borrar "${category.name}" de tus subcategorias. Tambien se va a sacar de las entries donde la estabas usando.`,
+      `Vas a quitar "${category.name}" de tus categorias asignadas.`,
     )
 
     if (!confirmed) {
@@ -813,6 +886,7 @@ export function EntriesHomePage() {
           setCategoryErrorMessage(null)
         }}
         onDelete={handleDeleteCategory}
+        onCreate={handleCreateCategory}
       />
 
       <UserCategorySetupModal
@@ -875,17 +949,40 @@ export function EntriesHomePage() {
                 <button
                   key={category.id}
                   type="button"
-                  className={
-                    activeCategoryId === category.id
-                      ? 'filter-chip filter-chip--active'
-                      : 'filter-chip'
-                  }
+                  className={`filter-chip ${
+                    activeCategoryId === category.id ? 'filter-chip--active' : ''
+                  } ${
+                    deleteModeCategoryId === category.id
+                      ? 'filter-chip--delete-mode'
+                      : ''
+                  }`.trim()}
+                  onTouchStart={() => {
+                    handleCategoryChipTouchStart(category.id)
+                  }}
+                  onTouchEnd={handleCategoryChipTouchEnd}
+                  onTouchMove={handleCategoryChipTouchEnd}
+                  onTouchCancel={handleCategoryChipTouchEnd}
                   onClick={() => {
+                    if (skipCategoryChipClickRef.current) {
+                      skipCategoryChipClickRef.current = false
+                      return
+                    }
+
+                    clearCategoryLongPressTimer()
+
+                    if (deleteModeCategoryId === category.id) {
+                      setDeleteModeCategoryId(null)
+                      void handleDeleteCategory(category)
+                      return
+                    }
+
+                    setDeleteModeCategoryId(null)
                     setActiveCategoryId(category.id)
                     setCurrentPage(1)
                   }}
                 >
                   {category.name}
+                  {deleteModeCategoryId === category.id ? ' x' : ''}
                 </button>
               ))}
 
@@ -942,17 +1039,40 @@ export function EntriesHomePage() {
                 <button
                   key={category.id}
                   type="button"
-                  className={
-                    activeCategoryId === category.id
-                      ? 'filter-chip filter-chip--active'
-                      : 'filter-chip'
-                  }
+                  className={`filter-chip ${
+                    activeCategoryId === category.id ? 'filter-chip--active' : ''
+                  } ${
+                    deleteModeCategoryId === category.id
+                      ? 'filter-chip--delete-mode'
+                      : ''
+                  }`.trim()}
+                  onTouchStart={() => {
+                    handleCategoryChipTouchStart(category.id)
+                  }}
+                  onTouchEnd={handleCategoryChipTouchEnd}
+                  onTouchMove={handleCategoryChipTouchEnd}
+                  onTouchCancel={handleCategoryChipTouchEnd}
                   onClick={() => {
+                    if (skipCategoryChipClickRef.current) {
+                      skipCategoryChipClickRef.current = false
+                      return
+                    }
+
+                    clearCategoryLongPressTimer()
+
+                    if (deleteModeCategoryId === category.id) {
+                      setDeleteModeCategoryId(null)
+                      void handleDeleteCategory(category)
+                      return
+                    }
+
+                    setDeleteModeCategoryId(null)
                     setActiveCategoryId(category.id)
                     setCurrentPage(1)
                   }}
                 >
                   {category.name}
+                  {deleteModeCategoryId === category.id ? ' x' : ''}
                 </button>
               ))}
 
@@ -1001,6 +1121,12 @@ export function EntriesHomePage() {
               />
               <span>Solo no vistas</span>
             </label>
+
+            <div className="library-toolbar__sort" aria-label="Orden de entradas">
+              <span>Ordenar:</span>
+              <strong>Mas recientes</strong>
+              <span aria-hidden="true">v</span>
+            </div>
           </section>
 
           {isLoading ? (
@@ -1039,6 +1165,9 @@ export function EntriesHomePage() {
                   const rowMeta = getRowMeta(entry)
                   const uploaderLabel = getUploaderLabel(entry, user?.id)
                   const isChecked = entryMarksById[entry.id]?.isChecked ?? false
+                  const entryThumbnailUrl =
+                    entryImagesByEntryId[entry.id]?.find((image) => image.thumbnailUrl)
+                      ?.thumbnailUrl ?? null
                   const isSwipeOpen = openSwipeEntryId === entry.id
                   const swipeOffset =
                     draggingSwipeEntryId === entry.id
@@ -1085,7 +1214,14 @@ export function EntriesHomePage() {
                       </div>
 
                     <article
-                      className={isSwipeOpen ? 'library-row library-row--swiped' : 'library-row'}
+                      className={[
+                        'library-row',
+                        `library-row--${entry.type}`,
+                        entryThumbnailUrl ? 'library-row--with-image' : '',
+                        isSwipeOpen ? 'library-row--swiped' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
                       style={{ transform: `translateX(-${swipeOffset}px)` }}
                       onTouchStart={(event) => {
                         handleSwipeStart(entry.id, event.touches[0].clientX)
@@ -1096,6 +1232,19 @@ export function EntriesHomePage() {
                       onTouchEnd={handleSwipeEnd}
                       onTouchCancel={handleSwipeEnd}
                     >
+                      {entryThumbnailUrl ? (
+                        <img
+                          className="library-row__media-bg"
+                          src={entryThumbnailUrl}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <div className="library-row__media-bg" aria-hidden="true" />
+                      )}
+
                       <Link
                         className="library-row__main"
                         to={`/entries/${entry.id}`}
@@ -1116,6 +1265,17 @@ export function EntriesHomePage() {
                               {typeLabelMap[entry.type]}
                             </span>
                             <span className="library-row__meta-pill">{uploaderLabel}</span>
+                            {(entryCategoryIdsByEntryId[entry.id] ?? [])
+                              .map((categoryId) => userCategoriesById[categoryId])
+                              .filter((category): category is CategoryRecord => Boolean(category))
+                              .map((category) => (
+                                <span
+                                  key={category.id}
+                                  className="library-row__meta-pill"
+                                >
+                                  {category.name}
+                                </span>
+                              ))}
                           </div>
 
                           <h2>{entry.title}</h2>
@@ -1127,8 +1287,16 @@ export function EntriesHomePage() {
                           </div>
                         </div>
 
-                        <span className="library-row__chevron" aria-hidden="true">
-                          &#8250;
+                        <span className="library-row__bookmark" aria-hidden="true">
+                          <svg viewBox="0 0 24 24" className="library-row__bookmark-icon">
+                            <path
+                              d="M7 4.75A2.25 2.25 0 0 1 9.25 2.5h5.5A2.25 2.25 0 0 1 17 4.75v16.1l-5-3.15-5 3.15V4.75Z"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
                         </span>
                       </Link>
 
