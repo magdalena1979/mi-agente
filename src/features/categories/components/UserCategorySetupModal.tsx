@@ -47,11 +47,9 @@ export function UserCategorySetupModal({
         aria-labelledby="user-category-setup-title"
       >
         <div className="section-title">
-          <h2 id="user-category-setup-title">Tus subcategorias personales</h2>
+          <h2 id="user-category-setup-title">Tus tags</h2>
           <p>
-            Estas categorias funcionan como subcategorias o tags tuyos. Podes
-            elegir algunas por default y sumar una propia si ya sabes como te gusta
-            organizar el archivo.
+            Elegi algunos tags iniciales. Refind tambien puede crear nuevos automaticamente cuando genera una ficha.
           </p>
         </div>
 
@@ -105,7 +103,7 @@ export function UserCategorySetupModal({
               void onSubmit({ selectedNames, customName })
             }}
           >
-            {isSubmitting ? 'Guardando...' : 'Guardar categorias'}
+            {isSubmitting ? 'Guardando...' : 'Guardar tags'}
           </button>
 
           <button

@@ -8,7 +8,6 @@ import {
   listEntryCategories,
   listUserCategories,
 } from '@/features/categories/categories-api'
-import { getSuggestedCategoryKeyForEntryType } from '@/features/categories/category-mapping'
 import { CreateUserCategoryModal } from '@/features/categories/components/CreateUserCategoryModal'
 import { ManageUserCategoriesModal } from '@/features/categories/components/ManageUserCategoriesModal'
 import { UserCategorySetupModal } from '@/features/categories/components/UserCategorySetupModal'
@@ -18,23 +17,14 @@ import {
 } from '@/features/auth/auth-preferences'
 import { useAuth } from '@/features/auth/auth-context'
 import { DEFAULT_USER_CATEGORY_NAMES, type CategoryRecord, type EntryCategoryRecord } from '@/types/categories'
-import { entryTypeOptions } from '@/features/entries/config/entry-type-config'
 import { deleteEntry, listEntries, updateEntry } from '@/features/entries/entries-api'
 import { listEntryImagesForEntries } from '@/features/entries/entry-images-api'
 import { listEntryUserMarks, upsertEntryUserMark } from '@/features/sharing/sharing-api'
-import type { EntryImageRecord, EntryRecord, EntryType, EntryUserMarkRecord } from '@/types/entries'
+import type { EntryImageRecord, EntryRecord, EntryUserMarkRecord } from '@/types/entries'
 
 const PAGE_SIZE = 20
 const MOBILE_SWIPE_ACTIONS_WIDTH = 216
 const MOBILE_SWIPE_OPEN_THRESHOLD = 88
-
-const typeLabelMap = entryTypeOptions.reduce<Record<EntryType, string>>(
-  (labels, option) => {
-    labels[option.type] = option.label
-    return labels
-  },
-  {} as Record<EntryType, string>,
-)
 
 function formatDate(date: string) {
   return new Intl.DateTimeFormat('es-AR', {
@@ -259,7 +249,7 @@ export function EntriesHomePage() {
           setCategoryErrorMessage(
             error instanceof Error
               ? error.message
-              : 'No pudimos cargar tus subcategorias personales.',
+              : 'No pudimos cargar tus tags.',
           )
         }
       } finally {
@@ -393,7 +383,7 @@ export function EntriesHomePage() {
           setErrorMessage(
             error instanceof Error
               ? error.message
-              : 'No pudimos cargar las categorias de tus entries.',
+              : 'No pudimos cargar los tags de tus entries.',
           )
         }
       }
@@ -444,22 +434,15 @@ export function EntriesHomePage() {
 
   const filteredEntries = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase()
-    const activeCategory =
-      activeCategoryId === 'all' ? null : userCategoriesById[activeCategoryId] ?? null
-
     return entries.filter((entry) => {
       if (entry.status === 'archived') {
         return false
       }
 
       const assignedCategoryIds = entryCategoryIdsByEntryId[entry.id] ?? []
-      const matchesSuggestedTypeCategory =
-        activeCategory !== null &&
-        activeCategory.normalizedName === getSuggestedCategoryKeyForEntryType(entry.type)
       const matchesCategory =
         activeCategoryId === 'all' ||
-        assignedCategoryIds.includes(activeCategoryId) ||
-        matchesSuggestedTypeCategory
+        assignedCategoryIds.includes(activeCategoryId)
       const isChecked = entryMarksById[entry.id]?.isChecked ?? false
       const matchesMark = !showUncheckedOnly || !isChecked
       const matchesQuery =
@@ -475,7 +458,6 @@ export function EntriesHomePage() {
     entryMarksById,
     searchQuery,
     showUncheckedOnly,
-    userCategoriesById,
   ])
 
   useEffect(() => {
@@ -734,19 +716,27 @@ export function EntriesHomePage() {
         userId: user.id,
         name,
       })
+      const nextCategories = await refreshUserCategories().catch(() => [])
 
-      setUserCategories((currentCategories) =>
-        [...currentCategories, nextCategory].sort((leftCategory, rightCategory) =>
-          leftCategory.name.localeCompare(rightCategory.name),
-        ),
-      )
+      if (nextCategories.length === 0) {
+        setUserCategories((currentCategories) =>
+          [...new Map(
+            [...currentCategories, nextCategory].map((category) => [
+              category.id,
+              category,
+            ]),
+          ).values()].sort((leftCategory, rightCategory) =>
+            leftCategory.name.localeCompare(rightCategory.name),
+          ),
+        )
+      }
       setActiveCategoryId(nextCategory.id)
       setIsCreateCategoryModalOpen(false)
     } catch (error) {
       setCategoryErrorMessage(
         error instanceof Error
           ? error.message
-          : 'No pudimos guardar esta subcategoria personal.',
+          : 'No pudimos guardar este tag.',
       )
     } finally {
       setIsSavingCategory(false)
@@ -782,7 +772,7 @@ export function EntriesHomePage() {
       setCategoryErrorMessage(
         error instanceof Error
           ? error.message
-          : 'No pudimos guardar tus subcategorias personales.',
+          : 'No pudimos guardar tus tags.',
       )
     } finally {
       setIsSavingCategorySetup(false)
@@ -810,7 +800,7 @@ export function EntriesHomePage() {
     }
 
     const confirmed = window.confirm(
-      `Vas a quitar "${category.name}" de tus categorias asignadas.`,
+      `Vas a quitar "${category.name}" de tus tags guardados.`,
     )
 
     if (!confirmed) {
@@ -836,7 +826,7 @@ export function EntriesHomePage() {
       setCategoryErrorMessage(
         error instanceof Error
           ? error.message
-          : 'No pudimos borrar esta subcategoria personal.',
+          : 'No pudimos borrar este tag.',
       )
     } finally {
       setDeletingCategoryId(null)
@@ -865,7 +855,7 @@ export function EntriesHomePage() {
     <section className="page page--library">
       <CreateUserCategoryModal
         isOpen={isCreateCategoryModalOpen}
-        title="Agregar categoria"
+        title="Agregar tag"
         description={null}
         isSubmitting={isSavingCategory}
         errorMessage={categoryErrorMessage}
@@ -928,7 +918,7 @@ export function EntriesHomePage() {
           <section className="library-toolbar">
             <div
               className="filter-row filter-row--mobile"
-              aria-label="Filtrar por categoria personal o tipo detectado"
+              aria-label="Filtrar por tag"
             >
               <button
                 type="button"
@@ -993,13 +983,13 @@ export function EntriesHomePage() {
                   setCategoryErrorMessage(null)
                   setIsCreateCategoryModalOpen(true)
                 }}
-                aria-label="Agregar categoria"
-                title="Agregar categoria"
+                aria-label="Agregar tag"
+                title="Agregar tag"
               >
                 <span className="library-toolbar__add-category-chip-mobile" aria-hidden="true">
                   +
                 </span>
-                <span className="library-toolbar__add-category-chip-desktop">Otra</span>
+                <span className="library-toolbar__add-category-chip-desktop">Tag</span>
               </button>
             </div>
 
@@ -1018,7 +1008,7 @@ export function EntriesHomePage() {
 
             <div
               className="filter-row filter-row--desktop"
-              aria-label="Filtrar por categoria personal o tipo detectado"
+              aria-label="Filtrar por tag"
             >
               <button
                 type="button"
@@ -1084,7 +1074,7 @@ export function EntriesHomePage() {
                   setIsCreateCategoryModalOpen(true)
                 }}
               >
-                Otra
+                Tag
               </button>
             </div>
 
@@ -1097,7 +1087,7 @@ export function EntriesHomePage() {
                   setIsManageCategoriesModalOpen(true)
                 }}
               >
-                Editar categorias
+                Editar tags
               </button>
 
               <Link
@@ -1148,13 +1138,13 @@ export function EntriesHomePage() {
           ) : filteredEntries.length === 0 ? (
             <article className="card card--flat empty-state">
               <h2>No encontramos resultados</h2>
-              <p>Proba otro texto o cambia la categoria del filtro.</p>
+              <p>Proba otro texto o cambia el tag del filtro.</p>
             </article>
           ) : (
             <section className="library-table" aria-label="Items guardados">
               <div className="library-table__head" aria-hidden="true">
                 <span>Item</span>
-                <span>Tipo</span>
+                <span>Tags</span>
                 <span>Subio</span>
                 <span>Actualizado</span>
                 <span>Acciones</span>
@@ -1177,6 +1167,9 @@ export function EntriesHomePage() {
                         : 0
                   const isSwipeBusy =
                     deletingId === entry.id || archivingId === entry.id
+                  const rowCategories = (entryCategoryIdsByEntryId[entry.id] ?? [])
+                    .map((categoryId) => userCategoriesById[categoryId])
+                    .filter((category): category is CategoryRecord => Boolean(category))
 
                   return (
                     <div className="library-row-swipe-shell" key={entry.id}>
@@ -1261,14 +1254,8 @@ export function EntriesHomePage() {
                       >
                         <div className="library-row__content">
                           <div className="library-row__meta-group">
-                            <span className="library-row__type">
-                              {typeLabelMap[entry.type]}
-                            </span>
                             <span className="library-row__meta-pill">{uploaderLabel}</span>
-                            {(entryCategoryIdsByEntryId[entry.id] ?? [])
-                              .map((categoryId) => userCategoriesById[categoryId])
-                              .filter((category): category is CategoryRecord => Boolean(category))
-                              .map((category) => (
+                            {rowCategories.map((category) => (
                                 <span
                                   key={category.id}
                                   className="library-row__meta-pill"

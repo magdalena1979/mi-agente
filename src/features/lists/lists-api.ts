@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client'
+import { createClientUuid } from '@/lib/random-id'
 import type {
   InvitationLookupRecord,
   InvitationRecord,
@@ -149,7 +150,7 @@ export async function ensureDefaultList(userId: string) {
     }
   }
 
-  const newListId = crypto.randomUUID()
+  const newListId = createClientUuid()
 
   const { error } = await client
     .from('lists')

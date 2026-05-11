@@ -4,6 +4,7 @@ import {
   createInvitation,
   sendShareInvitationEmail,
 } from '@/features/lists/lists-api'
+import { createClientUuid } from '@/lib/random-id'
 import type { ListRecord } from '@/types/lists'
 
 type ShareListModalProps = {
@@ -67,7 +68,7 @@ export function ShareListModal({
     setSuccessMessage(null)
     setInviteLink(null)
 
-    const token = crypto.randomUUID()
+    const token = createClientUuid()
     const nextInviteLink = `${window.location.origin}/accept-invite?token=${token}`
 
     try {

@@ -12,7 +12,7 @@ type CreateUserCategoryModalProps = {
 
 export function CreateUserCategoryModal({
   isOpen,
-  title = 'Agregar categoria',
+  title = 'Agregar tag',
   description = null,
   isSubmitting = false,
   errorMessage,
@@ -55,7 +55,7 @@ export function CreateUserCategoryModal({
             <span>Nombre</span>
             <input
               type="text"
-              placeholder="Ej. Documentales, K-dramas, Ideas para Male"
+              placeholder="Ej. astrologia, diabetes, ideas para casa"
               value={name}
               onChange={(event) => {
                 setName(event.target.value)

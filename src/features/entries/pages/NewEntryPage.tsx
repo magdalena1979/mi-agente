@@ -3,11 +3,15 @@ import { Link, useNavigate } from 'react-router-dom'
 
 import { analyzeEntry } from '@/features/ai/analyze-entry'
 import { useAuth } from '@/features/auth/auth-context'
-import { findSuggestedCategoryForEntryType } from '@/features/categories/category-mapping'
-import { createUserCategory, listUserCategories, replaceEntryCategories, deleteUserCategory } from '@/features/categories/categories-api'
+import {
+  createManyUserCategories,
+  createUserCategory,
+  deleteUserCategory,
+  listUserCategories,
+  replaceEntryCategories,
+} from '@/features/categories/categories-api'
 import { ManageUserCategoriesModal } from '@/features/categories/components/ManageUserCategoriesModal'
 import { EntryForm } from '@/features/entries/components/EntryForm'
-import { entryTypeOptions } from '@/features/entries/config/entry-type-config'
 import { createEntry, updateEntry } from '@/features/entries/entries-api'
 import { replaceEntryImages } from '@/features/entries/entry-images-api'
 import {
@@ -22,6 +26,7 @@ import {
   getAnalysisImageResizeOptions,
 } from '@/features/entries/image-utils'
 import { extractTextFromImage } from '@/features/ocr/services/browser-ocr'
+import { createClientUuid } from '@/lib/random-id'
 import type { CategoryRecord } from '@/types/categories'
 import { ENTRY_FIELD_KEYS, type PendingUploadImage } from '@/types/entries'
 
@@ -35,19 +40,19 @@ type OcrImageResult = {
 
 const MAX_ENTRY_CAPTURES = 2
 type NewEntryStep = 1 | 2 | 3
-const entryTypeLabelMap = entryTypeOptions.reduce<Record<string, string>>(
-  (labels, option) => {
-    labels[option.type] = option.label
-    return labels
-  },
-  {},
-)
 
 function reindexImages(images: PendingUploadImage[]) {
   return images.map((image, index) => ({
     ...image,
     position: index,
   }))
+}
+
+function uniqueCategoriesById(categories: CategoryRecord[]) {
+  return [...new Map(categories.map((category) => [category.id, category])).values()]
+    .sort((leftCategory, rightCategory) =>
+      leftCategory.name.localeCompare(rightCategory.name),
+    )
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -193,6 +198,76 @@ function getHeroHighlights(
   return highlights.slice(0, 6)
 }
 
+function normalizeTagKey(name: string) {
+  return name
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+}
+
+function titleCaseTagName(name: string) {
+  return name
+    .trim()
+    .replace(/\s+/g, ' ')
+    .split(' ')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ')
+}
+
+function inferTagNamesFromValues(values: EntryFormValues) {
+  const tags = parseTags(values.tagsText)
+  const searchableText = [
+    values.title,
+    values.summary,
+    values.tagsText,
+    values.topic,
+    values.genre,
+    values.note,
+    values.sourceName,
+  ]
+    .join(' ')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+
+  if (
+    /\b(astrolog|carta natal|zodiaco|horoscop|ascendente|signo lunar)\b/.test(
+      searchableText,
+    )
+  ) {
+    return ['Astrologia']
+  }
+
+  if (/\b(diabetes|glucosa|insulina|glucemia)\b/.test(searchableText)) {
+    return ['Diabetes']
+  }
+
+  const ignoredTagKeys = new Set([
+    'instagram',
+    'tiktok',
+    'youtube',
+    'link',
+    'post',
+    'otro',
+    'otros',
+    'captura',
+    'guardar',
+    'pendiente',
+  ])
+  const tagNames = tags
+    .filter((tag) => {
+      const normalizedTag = normalizeTagKey(tag)
+
+      return normalizedTag.length > 2 && !ignoredTagKeys.has(normalizedTag)
+    })
+    .slice(0, 4)
+    .map(titleCaseTagName)
+
+  return [...new Set(tagNames)]
+}
+
 export function NewEntryPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -209,7 +284,6 @@ export function NewEntryPage() {
       sourceType: 'screenshot',
     }),
   )
-  const [analysisDetectedType, setAnalysisDetectedType] = useState<string | null>(null)
   const [analysisConfidence, setAnalysisConfidence] = useState<number | null>(null)
   const [analysisRunCount, setAnalysisRunCount] = useState(0)
   const [analysisErrorMessage, setAnalysisErrorMessage] = useState<string | null>(
@@ -232,11 +306,6 @@ export function NewEntryPage() {
   const normalizedLinkInput = linkInput.trim()
   const hasValidLinkInput = isValidUrl(normalizedLinkInput)
 
-  const typeLabel = entryTypeLabelMap[formDefaults.type] ?? 'Entrada'
-  const suggestedCategory = useMemo<CategoryRecord | null>(
-    () => findSuggestedCategoryForEntryType(availableCategories, formDefaults.type),
-    [availableCategories, formDefaults.type],
-  )
   const heroHighlights = useMemo(
     () => getHeroHighlights(formDefaults, pendingImages, analysisConfidence),
     [analysisConfidence, formDefaults, pendingImages],
@@ -314,7 +383,7 @@ export function NewEntryPage() {
       } catch (error) {
         if (!ignore) {
           setCategoryErrorMessage(
-            getErrorMessage(error, 'No pudimos cargar tus subcategorias personales.'),
+            getErrorMessage(error, 'No pudimos cargar tus tags.'),
           )
         }
       }
@@ -328,18 +397,6 @@ export function NewEntryPage() {
   }, [user])
 
   useEffect(() => {
-    if (!suggestedCategory) {
-      return
-    }
-
-    setSelectedCategoryIds((currentIds) =>
-      currentIds.includes(suggestedCategory.id)
-        ? currentIds
-        : [suggestedCategory.id, ...currentIds],
-    )
-  }, [suggestedCategory])
-
-  useEffect(() => {
     return () => {
       for (const previewUrl of previewUrlsRef.current) {
         URL.revokeObjectURL(previewUrl)
@@ -350,7 +407,6 @@ export function NewEntryPage() {
   function resetAnalysisState() {
     setInstagramPastedText('')
     setIsInstagramTextMode(false)
-    setAnalysisDetectedType(null)
     setAnalysisConfidence(null)
     setAnalysisRunCount(0)
     setAnalysisErrorMessage(null)
@@ -385,7 +441,6 @@ export function NewEntryPage() {
     setPendingImages([])
     setInstagramPastedText('')
     setIsInstagramTextMode(false)
-    setAnalysisDetectedType(null)
     setAnalysisConfidence(null)
     setAnalysisRunCount(0)
     setAnalysisErrorMessage(null)
@@ -432,7 +487,7 @@ export function NewEntryPage() {
       const nextImages = [
         ...currentImages,
         ...filesToAppend.map((file, index) => ({
-          id: crypto.randomUUID(),
+          id: createClientUuid(),
           file,
           previewUrl: URL.createObjectURL(file),
           position: currentImages.length + index,
@@ -448,7 +503,6 @@ export function NewEntryPage() {
     setLinkInput('')
     setLinkSuccessMessage(null)
     if (isInstagramPreparedLink) {
-      setAnalysisDetectedType(null)
       setAnalysisConfidence(null)
       setAnalysisRunCount(0)
       setAnalysisErrorMessage(null)
@@ -546,7 +600,6 @@ export function NewEntryPage() {
     })
 
     if (isInstagramPreparedLink) {
-      setAnalysisDetectedType(null)
       setAnalysisConfidence(null)
       setAnalysisRunCount(0)
       setAnalysisErrorMessage(null)
@@ -584,7 +637,6 @@ export function NewEntryPage() {
     setAnalysisErrorMessage(null)
     setSaveErrorMessage(null)
     setSaveSuccessMessage(null)
-    setAnalysisDetectedType(null)
     setAnalysisConfidence(null)
 
     const snapshot = [...pendingImages]
@@ -707,7 +759,6 @@ export function NewEntryPage() {
         sourceUrl: sourceContext.sourceUrl,
       })
 
-      setAnalysisDetectedType(analysis.detectedType)
       setAnalysisConfidence(analysis.confidence)
       setAnalysisRunCount((currentCount) => currentCount + 1)
 
@@ -725,6 +776,31 @@ export function NewEntryPage() {
       }
 
       setFormDefaults(nextFormValues)
+      const inferredTagNames = inferTagNamesFromValues(nextFormValues)
+
+      if (user && inferredTagNames.length > 0) {
+        try {
+          const tags = await createManyUserCategories({
+            userId: user.id,
+            names: inferredTagNames,
+          })
+
+          setAvailableCategories((currentCategories) =>
+            uniqueCategoriesById([...currentCategories, ...tags]),
+          )
+          setSelectedCategoryIds((currentIds) => [
+            ...new Set([...currentIds, ...tags.map((tag) => tag.id)]),
+          ])
+        } catch (categoryError) {
+          setCategoryErrorMessage(
+            getErrorMessage(
+              categoryError,
+              'No pudimos crear los tags sugeridos automaticamente.',
+            ),
+          )
+        }
+      }
+
       setActiveStep(3)
     } catch (error) {
       setAnalysisErrorMessage(
@@ -755,6 +831,22 @@ export function NewEntryPage() {
     setSaveSuccessMessage(null)
 
     try {
+      let categoryIdsForSave = selectedCategoryIds
+      const inferredTagNames = inferTagNamesFromValues(values)
+
+      if (categoryIdsForSave.length === 0 && inferredTagNames.length > 0) {
+        const tags = await createManyUserCategories({
+          userId: user.id,
+          names: inferredTagNames,
+        })
+
+        categoryIdsForSave = tags.map((tag) => tag.id)
+        setAvailableCategories((currentCategories) =>
+          uniqueCategoriesById([...currentCategories, ...tags]),
+        )
+        setSelectedCategoryIds(categoryIdsForSave)
+      }
+
       const entryPayload = {
         userId: user.id,
         type: values.type,
@@ -794,7 +886,7 @@ export function NewEntryPage() {
       await replaceEntryCategories({
         entryId: entry.id,
         userId: user.id,
-        categoryIds: selectedCategoryIds,
+        categoryIds: categoryIdsForSave,
       })
 
       setSaveSuccessMessage('Entry guardada correctamente.')
@@ -868,18 +960,23 @@ export function NewEntryPage() {
         userId: user.id,
         name,
       })
+      const nextCategories = await listUserCategories(user.id).catch(() => [])
 
       setAvailableCategories((currentCategories) =>
-        [...currentCategories, nextCategory].sort((leftCategory, rightCategory) =>
-          leftCategory.name.localeCompare(rightCategory.name),
+        uniqueCategoriesById(
+          nextCategories.length > 0
+            ? nextCategories
+            : [...currentCategories, nextCategory],
         ),
       )
       setSelectedCategoryIds((currentIds) =>
-        currentIds.includes(nextCategory.id) ? currentIds : [...currentIds, nextCategory.id],
+        currentIds.includes(nextCategory.id)
+          ? currentIds
+          : [...currentIds, nextCategory.id],
       )
     } catch (error) {
       setCategoryErrorMessage(
-        getErrorMessage(error, 'No pudimos guardar esta categoria.'),
+        getErrorMessage(error, 'No pudimos guardar este tag.'),
       )
     }
   }
@@ -890,7 +987,7 @@ export function NewEntryPage() {
     }
 
     const confirmed = window.confirm(
-      `Vas a quitar "${category.name}" de tus categorias asignadas.`,
+      `Vas a quitar "${category.name}" de tus tags guardados.`,
     )
 
     if (!confirmed) {
@@ -914,7 +1011,7 @@ export function NewEntryPage() {
       )
     } catch (error) {
       setCategoryErrorMessage(
-        getErrorMessage(error, 'No se pudo eliminar la categoria.'),
+        getErrorMessage(error, 'No se pudo eliminar el tag.'),
       )
     } finally {
       setDeletingCategoryId(null)
@@ -1441,9 +1538,6 @@ export function NewEntryPage() {
             </div>
 
             <div className="detail-hero__eyebrow">
-              <span className="entry-card__type">
-                {analysisDetectedType ? entryTypeLabelMap[analysisDetectedType] : typeLabel}
-              </span>
               <span className="detail-chip">{formatSourceTypeLabel(formDefaults.sourceType)}</span>
               {formDefaults.sourceName ? (
                 <span className="detail-chip">{formDefaults.sourceName}</span>
@@ -1456,11 +1550,6 @@ export function NewEntryPage() {
                 <p className="detail-hero__source">Fuente detectada: {formDefaults.sourceName}</p>
               ) : null}
               <p className="detail-hero__summary">{heroSummary}</p>
-              {suggestedCategory ? (
-                <p className="detail-hero__source">
-                  Categoria sugerida para filtrar: {suggestedCategory.name}
-                </p>
-              ) : null}
             </div>
 
             {heroHighlights.length > 0 ? (

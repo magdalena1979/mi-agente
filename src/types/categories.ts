@@ -19,14 +19,12 @@ export type EntryCategoryRecord = {
 }
 
 export const DEFAULT_USER_CATEGORY_NAMES = [
+  'Astrologia',
+  'Diabetes',
+  'Ideas',
+  'Pendientes',
+  'Recetas',
   'Libros',
   'Peliculas',
   'Series',
-  'Recetas',
-  'Articulos',
-  'Lugares',
-  'Viajes',
-  'Plantas',
-  'Ideas',
-  'Pendientes',
 ] as const

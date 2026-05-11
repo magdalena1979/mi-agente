@@ -272,7 +272,7 @@ export async function createUserCategory(input: {
   const name = normalizeCategoryName(input.name)
 
   if (!name) {
-    throw new Error('Ingresa un nombre para la categoria.')
+    throw new Error('Ingresa un nombre para el tag.')
   }
 
   try {
@@ -417,7 +417,7 @@ export async function deleteUserCategory(input: {
     }
 
     if (usage && usage.length > 0) {
-      throw new Error('No se puede eliminar la categoria porque se esta usando en entradas.')
+      throw new Error('No se puede eliminar el tag porque se esta usando en entradas.')
     }
 
     const { error: deleteAssignError } = await client
@@ -446,7 +446,7 @@ export async function deleteUserCategory(input: {
     }
 
     if (legacyUsage && legacyUsage.length > 0) {
-      throw new Error('No se puede eliminar la categoria porque se esta usando en entradas.')
+      throw new Error('No se puede eliminar el tag porque se esta usando en entradas.')
     }
 
     const { error: legacyError } = await client

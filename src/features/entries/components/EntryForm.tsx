@@ -171,21 +171,7 @@ export function EntryForm({
           </p>
         </div>
 
-        <div className="field-grid field-grid--title-row">
-          <label className="form-field">
-            <span>Tipo</span>
-            <select {...form.register('type')} disabled={isFormReadOnly}>
-              {entryTypeOptions.map((option) => (
-                <option key={option.type} value={option.type}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            {form.formState.errors.type ? (
-              <small className="form-error">{form.formState.errors.type.message}</small>
-            ) : null}
-          </label>
-
+        <div className="field-grid">
           <label className="form-field">
             <span>Titulo</span>
             <input
@@ -211,7 +197,7 @@ export function EntryForm({
         </label>
 
         <label className="form-field">
-          <span>Tags</span>
+          <span>Tags detectados</span>
           <input
             type="text"
             placeholder="Separados por coma"
@@ -219,6 +205,44 @@ export function EntryForm({
             {...form.register('tagsText')}
           />
         </label>
+
+        <div className="form-field">
+          <span>Tags guardados</span>
+          <p className="form-helper">
+            Se usan como filtros de tu biblioteca. Refind puede crearlos automaticamente desde los tags detectados.
+          </p>
+
+          <div className="category-filter-grid category-filter-grid--form">
+            {availableCategories.map((category) => (
+              <button
+                key={category.id}
+                type="button"
+                className={
+                  selectedCategoryIds.includes(category.id)
+                    ? 'filter-chip filter-chip--active'
+                    : 'filter-chip'
+                }
+                disabled={isFormReadOnly}
+                onClick={() => {
+                  onToggleCategory?.(category.id)
+                }}
+              >
+                {category.name}
+              </button>
+            ))}
+
+            <button
+              type="button"
+              className="filter-chip filter-chip--add"
+              disabled={isFormReadOnly}
+              onClick={() => {
+                onOpenManageCategories?.()
+              }}
+            >
+              Gestionar tags
+            </button>
+          </div>
+        </div>
       </section>
 
       {detailFields.length > 0 ? (
@@ -240,7 +264,7 @@ export function EntryForm({
         <summary className="form-section__summary">
           <span>
             <strong>Info avanzada</strong>
-            <small>Origen, categorias y datos menos frecuentes.</small>
+            <small>Origen y datos menos frecuentes.</small>
           </span>
         </summary>
 
@@ -251,6 +275,20 @@ export function EntryForm({
         ) : null}
 
         <div className="field-grid">
+          <label className="form-field">
+            <span>Tipo interno</span>
+            <select {...form.register('type')} disabled={isFormReadOnly}>
+              {entryTypeOptions.map((option) => (
+                <option key={option.type} value={option.type}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            {form.formState.errors.type ? (
+              <small className="form-error">{form.formState.errors.type.message}</small>
+            ) : null}
+          </label>
+
           <label className="form-field">
             <span>Origen</span>
             <select {...form.register('sourceType')} disabled={isFormReadOnly}>
@@ -285,43 +323,6 @@ export function EntryForm({
           </label>
         ) : null}
 
-        <div className="form-field">
-          <span>Categorias para filtrar</span>
-          <p className="form-helper">
-            Se usan para encontrar esta ficha dentro de tu biblioteca.
-          </p>
-
-          <div className="category-filter-grid category-filter-grid--form">
-            {availableCategories.map((category) => (
-              <button
-                key={category.id}
-                type="button"
-                className={
-                  selectedCategoryIds.includes(category.id)
-                    ? 'filter-chip filter-chip--active'
-                    : 'filter-chip'
-                }
-                disabled={isFormReadOnly}
-                onClick={() => {
-                  onToggleCategory?.(category.id)
-                }}
-              >
-                {category.name}
-              </button>
-            ))}
-
-            <button
-              type="button"
-              className="filter-chip filter-chip--add"
-              disabled={isFormReadOnly}
-              onClick={() => {
-                onOpenManageCategories?.()
-              }}
-            >
-              Gestionar
-            </button>
-          </div>
-        </div>
       </details>
     </form>
   )

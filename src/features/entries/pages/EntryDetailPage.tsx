@@ -24,6 +24,7 @@ import {
 } from '@/features/entries/entry-form-schema'
 import { createAnalysisImageDataUrl } from '@/features/entries/image-utils'
 import { extractTextFromImage } from '@/features/ocr/services/browser-ocr'
+import { createClientUuid } from '@/lib/random-id'
 import type {
   EntryImageRecord,
   EntryRecord,
@@ -503,7 +504,7 @@ export function EntryDetailPage() {
           const ocrText = await extractTextFromImage(file).catch(() => '')
 
           return {
-            id: crypto.randomUUID(),
+            id: createClientUuid(),
             file,
             previewUrl: URL.createObjectURL(file),
             position: existingImages.length + index,

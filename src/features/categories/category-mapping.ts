@@ -12,8 +12,26 @@ const entryTypeToDefaultCategoryKey: Partial<Record<EntryType, string>> = {
   trip: 'viajes',
 }
 
+const entryTypeToDefaultCategoryName: Partial<Record<EntryType, string>> = {
+  article: 'Articulos',
+  book: 'Libros',
+  event: 'Eventos',
+  movie: 'Peliculas',
+  place: 'Lugares',
+  plant: 'Plantas',
+  recipe: 'Recetas',
+  series: 'Series',
+  trip: 'Viajes',
+  garden: 'Huerta',
+  collection: 'Coleccion',
+}
+
 export function getSuggestedCategoryKeyForEntryType(type: EntryType) {
   return entryTypeToDefaultCategoryKey[type] ?? null
+}
+
+export function getSuggestedCategoryNameForEntryType(type: EntryType) {
+  return entryTypeToDefaultCategoryName[type] ?? null
 }
 
 export function findSuggestedCategoryForEntryType(

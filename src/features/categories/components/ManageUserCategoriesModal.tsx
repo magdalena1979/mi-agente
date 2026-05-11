@@ -22,6 +22,7 @@ export function ManageUserCategoriesModal({
   onCreate,
 }: ManageUserCategoriesModalProps) {
   const [newCategoryName, setNewCategoryName] = useState('')
+  const [isCreating, setIsCreating] = useState(false)
 
   useEffect(() => {
     if (!isOpen) {
@@ -41,16 +42,14 @@ export function ManageUserCategoriesModal({
         aria-labelledby="manage-user-categories-title"
       >
         <div className="section-title">
-          <h2 id="manage-user-categories-title">Gestionar categorias</h2>
-          <p>
-            Estas son las categorias que tienes asignadas. Puedes agregar nuevas o eliminar las que no uses.
-          </p>
+          <h2 id="manage-user-categories-title">Gestionar tags</h2>
+          <p>Estos tags organizan tu biblioteca. Refind tambien puede crearlos automaticamente al generar una ficha.</p>
         </div>
 
         {errorMessage ? <p className="feedback feedback--error">{errorMessage}</p> : null}
 
         {categories.length === 0 ? (
-          <p className="muted">Todavia no tienes categorias asignadas.</p>
+          <p className="muted">Todavia no tienes tags guardados.</p>
         ) : (
           <div className="category-manage-list">
             {categories.map((category) => (
@@ -65,7 +64,7 @@ export function ManageUserCategoriesModal({
                       ? `Eliminando ${category.name}`
                       : `Eliminar ${category.name}`
                   }
-                  title="Eliminar categoria"
+                  title="Eliminar tag"
                   disabled={deletingCategoryId === category.id}
                   onClick={() => {
                     void onDelete(category)
@@ -97,10 +96,10 @@ export function ManageUserCategoriesModal({
 
         {onCreate && (
           <label className="form-field">
-            <span>Agregar nueva categoria</span>
+            <span>Agregar tag</span>
             <input
               type="text"
-              placeholder="Ej. K-dramas, Ideas para casa"
+              placeholder="Ej. Astrologia, Diabetes, Ideas para casa"
               value={newCategoryName}
               onChange={(event) => {
                 setNewCategoryName(event.target.value)
@@ -114,12 +113,19 @@ export function ManageUserCategoriesModal({
             <button
               type="button"
               className="button"
-              onClick={() => {
-                void onCreate(newCategoryName.trim())
-                setNewCategoryName('')
+              disabled={isCreating}
+              onClick={async () => {
+                setIsCreating(true)
+
+                try {
+                  await onCreate(newCategoryName.trim())
+                  setNewCategoryName('')
+                } finally {
+                  setIsCreating(false)
+                }
               }}
             >
-              Agregar
+              {isCreating ? 'Agregando...' : 'Agregar'}
             </button>
           )}
 
