@@ -113,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Validar que el email no esté bloqueado
         if (isBlockedEmail(email)) {
           throw new Error(
-            'Ni te preocupes, ya tengo pila de personas que me quieren y me valoran que prueben mi app y se alegren conmigo'
+            'Ni te calientes beb, ya tengo pila de personas que me quieren y me valoran y quieren probar mi app..  y se alegren conmigo!'
           )
         }
 
