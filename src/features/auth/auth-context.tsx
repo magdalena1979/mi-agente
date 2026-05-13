@@ -38,6 +38,19 @@ function getMissingConfigError() {
   )
 }
 
+function isBlockedEmail(email: string): boolean {
+  const lowerEmail = email.toLowerCase()
+  
+  // Patrones de emails bloqueados
+  const blockedPatterns = [
+    /@jjsolutions/, // Cualquier email con dominio @jjsolutions
+    /srossi/, // Emails que contengan "srossi"
+    /zantiagorossi/, // Emails que contengan "zantiagorossi"
+  ]
+  
+  return blockedPatterns.some(pattern => pattern.test(lowerEmail))
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [isLoading, setIsLoading] = useState(Boolean(supabase))
@@ -96,6 +109,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       async signUp({ email, password }) {
         if (!supabase) throw getMissingConfigError()
+
+        // Validar que el email no esté bloqueado
+        if (isBlockedEmail(email)) {
+          throw new Error(
+            'Ni te preocupes, ya tengo pila de personas que me quieren y me valoran que prueben mi app y se alegren conmigo'
+          )
+        }
 
         const { data, error } = await supabase.auth.signUp({
           email,
