@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 
 import BackgroundLines from '@/components/BackgroundLines'
+import { CatalogAssistant } from '@/features/assistant/CatalogAssistant'
 import { useAuth } from '@/features/auth/auth-context'
 import { env } from '@/lib/env'
 
@@ -259,6 +260,8 @@ export function AppShell() {
         <main>
           <Outlet />
         </main>
+
+        {user ? <CatalogAssistant /> : null}
       </div>
     </div>
   )

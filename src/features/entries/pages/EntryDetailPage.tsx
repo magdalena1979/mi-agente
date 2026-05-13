@@ -67,6 +67,19 @@ function getAiRefreshCount(entry: EntryRecord) {
   return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0
 }
 
+function getAiAnalysisCount(entry: EntryRecord) {
+  const rawValue = (entry.metadata as Record<string, string | undefined>)[
+    'aiAnalysisCount'
+  ]
+  const parsedValue = Number.parseInt(rawValue ?? '0', 10)
+
+  return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0
+}
+
+function getTotalAiAnalysisCount(entry: EntryRecord) {
+  return getAiAnalysisCount(entry) + getAiRefreshCount(entry)
+}
+
 function buildMetadataWithAiRefreshCount(
   metadata: EntryRecord['metadata'],
   aiRefreshCount: number,
@@ -252,9 +265,9 @@ export function EntryDetailPage() {
     [entry],
   )
 
-  const aiRefreshCount = entry ? getAiRefreshCount(entry) : 0
+  const totalAiAnalysisCount = entry ? getTotalAiAnalysisCount(entry) : 0
   const canEditEntry = Boolean(entry)
-  const canReanalyze = Boolean(entry && aiRefreshCount < 2)
+  const canReanalyze = Boolean(entry && totalAiAnalysisCount < 2)
 
   async function createAnalysisImageFromSavedCapture(image: EntryImageRecord) {
     if (!image.imageUrl) {
@@ -399,9 +412,9 @@ export function EntryDetailPage() {
       return
     }
 
-    if (getAiRefreshCount(entry) >= 2) {
+    if (getTotalAiAnalysisCount(entry) >= 2) {
       setErrorMessage(
-        'Esta entry ya alcanzo el limite de 2 actualizaciones con IA.',
+        'Esta entry ya alcanzo el limite de 2 analisis con IA.',
       )
       return
     }
@@ -594,6 +607,34 @@ export function EntryDetailPage() {
     <section className="page page--detail">
       <BackLink />
 
+      {isEditing ? (
+        <div className="detail-edit-bar">
+          <button
+            type="button"
+            className="button--ghost"
+            disabled={isSubmitting}
+            onClick={() => {
+              setIsEditing(false)
+              setErrorMessage(null)
+              setSuccessMessage(null)
+            }}
+          >
+            Cancelar
+          </button>
+
+          <strong>Editar entrada</strong>
+
+          <button
+            type="submit"
+            form="entry-detail-edit-form"
+            className="button detail-edit-bar__save"
+            disabled={isSubmitting || isDeleting}
+          >
+            {isSubmitting ? 'Guardando...' : 'Guardar'}
+          </button>
+        </div>
+      ) : null}
+
       <article className="detail-hero">
         <div className="detail-hero__content">
           <div className="detail-hero__toprow">
@@ -714,7 +755,7 @@ export function EntryDetailPage() {
                     : 'Limite de IA alcanzado'}
               </button>
               <span className="muted">
-                {aiRefreshCount}/2 reanalisis usados -solo tenes 2 chances por el momento-
+                {totalAiAnalysisCount}/2 analisis usados -solo tenes 2 chances por el momento-
               </span>
             </div>
           ) : null}
@@ -747,17 +788,19 @@ export function EntryDetailPage() {
         </div>
 
         <EntryForm
+          formId="entry-detail-edit-form"
           defaultValues={defaultValues}
           isSubmitting={isSubmitting}
           isDeleting={isDeleting}
           isReadOnly={!isEditing}
-          showActions={isEditing}
+          showActions={false}
           submitLabel="Guardar cambios"
           submitBusyLabel="Guardando..."
           errorMessage={errorMessage}
           successMessage={successMessage}
           onSubmit={handleUpdate}
           onDelete={handleDelete}
+          highlightEditableFields
         />
       </article>
       ) : null}

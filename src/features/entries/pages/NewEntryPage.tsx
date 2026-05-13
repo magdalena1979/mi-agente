@@ -39,6 +39,7 @@ type OcrImageResult = {
 }
 
 const MAX_ENTRY_CAPTURES = 2
+const MAX_INITIAL_AI_ANALYSES = 1
 type NewEntryStep = 1 | 2 | 3
 
 function reindexImages(images: PendingUploadImage[]) {
@@ -310,7 +311,15 @@ export function NewEntryPage() {
     () => getHeroHighlights(formDefaults, pendingImages, analysisConfidence),
     [analysisConfidence, formDefaults, pendingImages],
   )
-  const heroTags = useMemo(() => parseTags(formDefaults.tagsText), [formDefaults.tagsText])
+  const heroTags = useMemo(() => {
+    const selectedCategoryNames = availableCategories
+      .filter((category) => selectedCategoryIds.includes(category.id))
+      .map((category) => category.name)
+
+    return selectedCategoryNames.length > 0
+      ? selectedCategoryNames
+      : parseTags(formDefaults.tagsText)
+  }, [availableCategories, formDefaults.tagsText, selectedCategoryIds])
   const hasPreparedLink =
     formDefaults.sourceType === 'link' && formDefaults.sourceUrl.trim().length > 0
   const isInstagramPreparedLink = hasPreparedLink && isInstagramLink(formDefaults.sourceUrl)
@@ -623,8 +632,10 @@ export function NewEntryPage() {
       return
     }
 
-    if (analysisRunCount >= 2) {
-      setAnalysisErrorMessage('Ya usaste los 2 analisis disponibles para esta entrada.')
+    if (analysisRunCount >= MAX_INITIAL_AI_ANALYSES) {
+      setAnalysisErrorMessage(
+        'Ya usaste el analisis inicial. Si necesitas corregirlo, guarda la entry y usa el ultimo analisis desde editar.',
+      )
       return
     }
 
@@ -649,7 +660,7 @@ export function NewEntryPage() {
     const imagesSelectedForAi = snapshot
       .slice()
       .sort((leftImage, rightImage) => leftImage.position - rightImage.position)
-      .slice(0, 1)
+      .slice(0, MAX_ENTRY_CAPTURES)
     const ocrTextByImage: OcrImageResult[] = []
     const imagesForAnalysis = []
     let nextCombinedExtractedText = manualSupportText
@@ -905,8 +916,9 @@ export function NewEntryPage() {
       ? 'Subi al menos una captura para continuar.'
       : null
   const canSubmitEntry = formDefaults.sourceType === 'link' || pendingImages.length > 0
-  const canAnalyzeWithAi = hasSourceReady && analysisRunCount < 2
+  const canAnalyzeWithAi = hasSourceReady && analysisRunCount < MAX_INITIAL_AI_ANALYSES
   const captureProgressLabel = `${pendingImages.length} de ${MAX_ENTRY_CAPTURES} capturas cargadas`
+  const isUploadDisabled = pendingImages.length >= MAX_ENTRY_CAPTURES || isUsingLink
   const uploadCtaLabel =
     pendingImages.length === 0
       ? 'Cargar primera captura'
@@ -1336,16 +1348,31 @@ export function NewEntryPage() {
         </div>
 
         <div className="new-entry-upload-stage">
-          <button
-            type="button"
+          <div
+            role="button"
+            tabIndex={isUploadDisabled ? -1 : 0}
+            aria-disabled={isUploadDisabled}
             className={
               pendingImages.length > 0
                 ? 'new-entry-dropzone new-entry-dropzone--has-preview'
                 : 'new-entry-dropzone'
             }
-            disabled={pendingImages.length >= MAX_ENTRY_CAPTURES || isUsingLink}
             onClick={() => {
+              if (isUploadDisabled) {
+                return
+              }
+
               inputRef.current?.click()
+            }}
+            onKeyDown={(event) => {
+              if (isUploadDisabled) {
+                return
+              }
+
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                inputRef.current?.click()
+              }
             }}
           >
             {primaryPreviewUrl ? (
@@ -1354,6 +1381,27 @@ export function NewEntryPage() {
                 alt="Preview de la primera captura"
                 className="new-entry-dropzone__image"
               />
+            ) : null}
+            {pendingImages[0] ? (
+              <span
+                role="button"
+                tabIndex={0}
+                className="new-entry-dropzone__remove"
+                aria-label="Quitar primera captura"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  handleRemoveImage(pendingImages[0].id)
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    handleRemoveImage(pendingImages[0].id)
+                  }
+                }}
+              >
+                Quitar captura
+              </span>
             ) : null}
             <span className="new-entry-dropzone__overlay" />
             <span className="new-entry-dropzone__content">
@@ -1365,13 +1413,13 @@ export function NewEntryPage() {
                   : 'Arrastra, selecciona o pega una captura desde el portapapeles.'}
               </small>
             </span>
-          </button>
+          </div>
 
           <div className="new-entry-toolbar">
             <button
               type="button"
               className="button"
-              disabled={pendingImages.length >= MAX_ENTRY_CAPTURES || isUsingLink}
+              disabled={isUploadDisabled}
               onClick={() => {
                 inputRef.current?.click()
               }}
@@ -1474,8 +1522,8 @@ export function NewEntryPage() {
               ? hasPreparedLink
                 ? 'Generando ficha...'
                 : 'Analizando contenido...'
-                : analysisRunCount >= 2
-                ? 'Limite de IA alcanzado'
+                : analysisRunCount >= MAX_INITIAL_AI_ANALYSES
+                ? 'Analisis inicial usado'
                 : hasPreparedLink
                   ? 'Generar ficha automatica'
                   : 'Generar ficha automatica'}
@@ -1603,6 +1651,8 @@ export function NewEntryPage() {
           availableCategories={availableCategories}
           selectedCategoryIds={selectedCategoryIds}
           onToggleCategory={handleToggleCategory}
+          onDeleteCategory={handleDeleteCategory}
+          deletingCategoryId={deletingCategoryId}
           onOpenManageCategories={() => {
             setCategoryErrorMessage(null)
             setIsManageCategoriesModalOpen(true)

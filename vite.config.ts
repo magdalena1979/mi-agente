@@ -5,6 +5,7 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 import { analyzeEntryPayload } from './api/_lib/analyze-entry.js'
+import { answerCatalogAssistant } from './api/_lib/catalog-assistant.js'
 
 function analyzeEntryDevPlugin(input: {
   groqApiKey: string | undefined
@@ -62,6 +63,55 @@ function analyzeEntryDevPlugin(input: {
   }
 }
 
+function catalogAssistantDevPlugin(input: {
+  groqApiKey: string | undefined
+}): PluginOption {
+  return {
+    name: 'mi-agente-catalog-assistant-dev',
+    configureServer(server) {
+      server.middlewares.use('/api/catalog-assistant', async (req, res) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ error: 'Method not allowed.' }))
+          return
+        }
+
+        try {
+          const chunks: Uint8Array[] = []
+
+          for await (const chunk of req) {
+            chunks.push(
+              typeof chunk === 'string' ? Buffer.from(chunk) : Buffer.from(chunk),
+            )
+          }
+
+          const body = chunks.length
+            ? JSON.parse(Buffer.concat(chunks).toString('utf8'))
+            : {}
+
+          const result = await answerCatalogAssistant(body, input.groqApiKey)
+
+          res.statusCode = 200
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify(result))
+        } catch (error) {
+          res.statusCode = 400
+          res.setHeader('Content-Type', 'application/json')
+          res.end(
+            JSON.stringify({
+              error:
+                error instanceof Error
+                  ? error.message
+                  : 'No pudimos responder el chat.',
+            }),
+          )
+        }
+      })
+    },
+  }
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
 
@@ -78,6 +128,9 @@ export default defineConfig(({ mode }) => {
         metaAppId: env.META_APP_ID,
         metaAppSecret: env.META_APP_SECRET,
         metaOEmbedAccessToken: env.META_OEMBED_ACCESS_TOKEN,
+      }),
+      catalogAssistantDevPlugin({
+        groqApiKey: env.GROQ_API_KEY,
       }),
       VitePWA({
         registerType: 'autoUpdate',

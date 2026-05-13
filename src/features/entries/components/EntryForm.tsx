@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 
@@ -12,6 +12,9 @@ import {
   type EntryFormValues,
 } from '@/features/entries/entry-form-schema'
 import type { CategoryRecord } from '@/types/categories'
+
+const CATEGORY_DELETE_PRESS_MS = 350
+const CATEGORY_DELETE_MOVE_TOLERANCE = 12
 
 type EntryFormProps = {
   defaultValues: EntryFormValues
@@ -32,6 +35,9 @@ type EntryFormProps = {
   selectedCategoryIds?: string[]
   onToggleCategory?: (categoryId: string) => void
   onOpenManageCategories?: () => void
+  onDeleteCategory?: (category: CategoryRecord) => Promise<void> | void
+  deletingCategoryId?: string | null
+  highlightEditableFields?: boolean
 }
 
 export function EntryForm({
@@ -53,6 +59,9 @@ export function EntryForm({
   selectedCategoryIds = [],
   onToggleCategory,
   onOpenManageCategories,
+  onDeleteCategory,
+  deletingCategoryId,
+  highlightEditableFields = false,
 }: EntryFormProps) {
   const form = useForm<EntryFormValues>({
     resolver: zodResolver(entryFormSchema),
@@ -84,6 +93,86 @@ export function EntryForm({
   const isSubmitDisabled = !canSubmit || isSubmitting || isDeleting
   const isLinkSource = selectedSourceType === 'link'
   const isFormReadOnly = isReadOnly
+  const categoryLongPressTimerRef = useRef<number | null>(null)
+  const categoryPressStartRef = useRef<{ x: number; y: number } | null>(null)
+  const skipCategoryClickRef = useRef(false)
+  const [deleteModeCategoryId, setDeleteModeCategoryId] = useState<string | null>(null)
+  const visibleCategories = useMemo(
+    () =>
+      [...availableCategories].sort((leftCategory, rightCategory) => {
+        const leftSelected = selectedCategoryIds.includes(leftCategory.id)
+        const rightSelected = selectedCategoryIds.includes(rightCategory.id)
+
+        if (leftSelected !== rightSelected) {
+          return leftSelected ? -1 : 1
+        }
+
+        return leftCategory.name.localeCompare(rightCategory.name)
+      }),
+    [availableCategories, selectedCategoryIds],
+  )
+
+  function clearCategoryLongPressTimer() {
+    if (categoryLongPressTimerRef.current !== null) {
+      window.clearTimeout(categoryLongPressTimerRef.current)
+      categoryLongPressTimerRef.current = null
+    }
+  }
+
+  function handleCategoryPressStart(categoryId: string, clientX: number, clientY: number) {
+    if (!onDeleteCategory || isFormReadOnly) {
+      return
+    }
+
+    clearCategoryLongPressTimer()
+    categoryPressStartRef.current = { x: clientX, y: clientY }
+    skipCategoryClickRef.current = false
+
+    categoryLongPressTimerRef.current = window.setTimeout(() => {
+      setDeleteModeCategoryId(categoryId)
+      skipCategoryClickRef.current = true
+    }, CATEGORY_DELETE_PRESS_MS)
+  }
+
+  function handleCategoryPressMove(clientX: number, clientY: number) {
+    const start = categoryPressStartRef.current
+
+    if (!start) {
+      return
+    }
+
+    const moved =
+      Math.abs(clientX - start.x) > CATEGORY_DELETE_MOVE_TOLERANCE ||
+      Math.abs(clientY - start.y) > CATEGORY_DELETE_MOVE_TOLERANCE
+
+    if (moved) {
+      clearCategoryLongPressTimer()
+      categoryPressStartRef.current = null
+    }
+  }
+
+  function handleCategoryPressEnd() {
+    clearCategoryLongPressTimer()
+    categoryPressStartRef.current = null
+  }
+
+  function renderDeleteCategoryContent() {
+    return (
+      <span className="filter-chip__delete-content">
+        <svg aria-hidden="true" viewBox="0 0 24 24" className="filter-chip__delete-icon">
+          <path
+            d="M9 3h6m-9 4h12m-1 0-.8 11.2A2 2 0 0 1 14.2 20H9.8a2 2 0 0 1-1.99-1.8L7 7m3 4v5m4-5v5"
+            fill="none"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="1.8"
+          />
+        </svg>
+        <span>Eliminar</span>
+      </span>
+    )
+  }
 
   function renderMetadataField(field: (typeof visibleFields)[number]) {
     return (
@@ -125,10 +214,22 @@ export function EntryForm({
     }
   }, [defaultValues, form, isFormReadOnly])
 
+  useEffect(() => {
+    return () => {
+      clearCategoryLongPressTimer()
+    }
+  }, [])
+
   return (
     <form
       id={formId}
-      className={isFormReadOnly ? 'entry-form entry-form--readonly' : 'entry-form'}
+      className={[
+        'entry-form',
+        isFormReadOnly ? 'entry-form--readonly' : '',
+        highlightEditableFields && !isFormReadOnly ? 'entry-form--editing' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
       onSubmit={form.handleSubmit(onSubmit)}
     >
       <input type="hidden" {...form.register('status')} />
@@ -213,21 +314,61 @@ export function EntryForm({
           </p>
 
           <div className="category-filter-grid category-filter-grid--form">
-            {availableCategories.map((category) => (
+            {visibleCategories.map((category) => (
               <button
                 key={category.id}
                 type="button"
                 className={
-                  selectedCategoryIds.includes(category.id)
-                    ? 'filter-chip filter-chip--active'
-                    : 'filter-chip'
+                  [
+                    selectedCategoryIds.includes(category.id)
+                      ? 'filter-chip filter-chip--active'
+                      : 'filter-chip',
+                    deleteModeCategoryId === category.id
+                      ? 'filter-chip--delete-mode'
+                      : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')
                 }
-                disabled={isFormReadOnly}
+                disabled={isFormReadOnly || deletingCategoryId === category.id}
+                onPointerDown={(event) => {
+                  event.currentTarget.setPointerCapture?.(event.pointerId)
+                  handleCategoryPressStart(category.id, event.clientX, event.clientY)
+                }}
+                onPointerUp={handleCategoryPressEnd}
+                onPointerMove={(event) => {
+                  handleCategoryPressMove(event.clientX, event.clientY)
+                }}
+                onPointerCancel={handleCategoryPressEnd}
+                onPointerLeave={handleCategoryPressEnd}
+                onContextMenu={(event) => {
+                  if (onDeleteCategory) {
+                    event.preventDefault()
+                  }
+                }}
                 onClick={() => {
+                  if (skipCategoryClickRef.current) {
+                    skipCategoryClickRef.current = false
+                    return
+                  }
+
+                  clearCategoryLongPressTimer()
+
+                  if (deleteModeCategoryId === category.id && onDeleteCategory) {
+                    setDeleteModeCategoryId(null)
+                    void onDeleteCategory(category)
+                    return
+                  }
+
+                  setDeleteModeCategoryId(null)
                   onToggleCategory?.(category.id)
                 }}
               >
-                {category.name}
+                {deletingCategoryId === category.id
+                  ? 'Eliminando...'
+                  : deleteModeCategoryId === category.id
+                    ? renderDeleteCategoryContent()
+                    : category.name}
               </button>
             ))}
 

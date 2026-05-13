@@ -23,8 +23,10 @@ import { listEntryUserMarks, upsertEntryUserMark } from '@/features/sharing/shar
 import type { EntryImageRecord, EntryRecord, EntryUserMarkRecord } from '@/types/entries'
 
 const PAGE_SIZE = 20
-const MOBILE_SWIPE_ACTIONS_WIDTH = 216
-const MOBILE_SWIPE_OPEN_THRESHOLD = 88
+const MOBILE_SWIPE_ACTIONS_WIDTH = 132
+const MOBILE_SWIPE_OPEN_THRESHOLD = 52
+const CATEGORY_DELETE_PRESS_MS = 350
+const CATEGORY_DELETE_MOVE_TOLERANCE = 12
 
 function formatDate(date: string) {
   return new Intl.DateTimeFormat('es-AR', {
@@ -53,6 +55,18 @@ function getEntrySearchText(entry: EntryRecord) {
   ]
     .join(' ')
     .toLowerCase()
+}
+
+function getEntryCreatedTime(entry: EntryRecord) {
+  const createdTime = new Date(entry.createdAt).getTime()
+
+  if (Number.isFinite(createdTime)) {
+    return createdTime
+  }
+
+  const updatedTime = new Date(entry.updatedAt).getTime()
+
+  return Number.isFinite(updatedTime) ? updatedTime : 0
 }
 
 function getRowMeta(entry: EntryRecord) {
@@ -120,7 +134,9 @@ export function EntriesHomePage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [markingId, setMarkingId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [activeCategoryId, setActiveCategoryId] = useState<'all' | string>('all')
+  const [activeCategoryIds, setActiveCategoryIds] = useState<string[]>([])
+  const [statusFilter, setStatusFilter] = useState<'active' | 'archived'>('active')
+  const [sortOrder, setSortOrder] = useState<'recent' | 'oldest'>('recent')
   const [showUncheckedOnly, setShowUncheckedOnly] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [isCreateCategoryModalOpen, setIsCreateCategoryModalOpen] = useState(false)
@@ -148,8 +164,11 @@ export function EntriesHomePage() {
   )
 
   const longPressTimerRef = useRef<number | null>(null)
+  const categoryPressStartRef = useRef<{ x: number; y: number } | null>(null)
   const skipCategoryChipClickRef = useRef(false)
+  const dragOffsetRef = useRef(0)
   const [deleteModeCategoryId, setDeleteModeCategoryId] = useState<string | null>(null)
+  const [isCategoryDeleteMode, setIsCategoryDeleteMode] = useState(false)
 
   function clearCategoryLongPressTimer() {
     if (longPressTimerRef.current !== null) {
@@ -158,18 +177,78 @@ export function EntriesHomePage() {
     }
   }
 
-  function handleCategoryChipTouchStart(categoryId: string) {
+  function handleCategoryChipPressStart(categoryId: string, clientX: number, clientY: number) {
     clearCategoryLongPressTimer()
+    categoryPressStartRef.current = { x: clientX, y: clientY }
     skipCategoryChipClickRef.current = false
 
     longPressTimerRef.current = window.setTimeout(() => {
       setDeleteModeCategoryId(categoryId)
       skipCategoryChipClickRef.current = true
-    }, 2000)
+    }, CATEGORY_DELETE_PRESS_MS)
   }
 
-  function handleCategoryChipTouchEnd() {
+  function handleCategoryChipPressMove(clientX: number, clientY: number) {
+    const start = categoryPressStartRef.current
+
+    if (!start) {
+      return
+    }
+
+    const moved =
+      Math.abs(clientX - start.x) > CATEGORY_DELETE_MOVE_TOLERANCE ||
+      Math.abs(clientY - start.y) > CATEGORY_DELETE_MOVE_TOLERANCE
+
+    if (moved) {
+      clearCategoryLongPressTimer()
+      categoryPressStartRef.current = null
+    }
+  }
+
+  function handleCategoryChipPressEnd() {
     clearCategoryLongPressTimer()
+    categoryPressStartRef.current = null
+  }
+
+  function toggleCategoryFilter(categoryId: string) {
+    setActiveCategoryIds((currentIds) =>
+      currentIds.includes(categoryId)
+        ? currentIds.filter((currentId) => currentId !== categoryId)
+        : [...currentIds, categoryId],
+    )
+    setCurrentPage(1)
+  }
+
+  function getCategoryChipClassName(categoryId: string) {
+    return `filter-chip ${
+      activeCategoryIds.includes(categoryId) ? 'filter-chip--active' : ''
+    } ${
+      deleteModeCategoryId === categoryId || isCategoryDeleteMode
+        ? 'filter-chip--delete-mode'
+        : ''
+    }`.trim()
+  }
+
+  function renderCategoryChipContent(category: CategoryRecord) {
+    if (deleteModeCategoryId === category.id || isCategoryDeleteMode) {
+      return (
+        <span className="filter-chip__delete-content">
+          <svg aria-hidden="true" viewBox="0 0 24 24" className="filter-chip__delete-icon">
+            <path
+              d="M9 3h6m-9 4h12m-1 0-.8 11.2A2 2 0 0 1 14.2 20H9.8a2 2 0 0 1-1.99-1.8L7 7m3 4v5m4-5v5"
+              fill="none"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="1.8"
+            />
+          </svg>
+          <span>{category.name}</span>
+        </span>
+      )
+    }
+
+    return category.name
   }
 
   useEffect(() => {
@@ -433,41 +512,65 @@ export function EntriesHomePage() {
   // }, [user])
 
   const filteredEntries = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase()
+    const queryTokens = searchQuery
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean)
+
     return entries.filter((entry) => {
-      if (entry.status === 'archived') {
+      if (statusFilter === 'active' && entry.status === 'archived') {
+        return false
+      }
+
+      if (statusFilter === 'archived' && entry.status !== 'archived') {
         return false
       }
 
       const assignedCategoryIds = entryCategoryIdsByEntryId[entry.id] ?? []
+      const assignedCategoryText = assignedCategoryIds
+        .map((categoryId) => userCategoriesById[categoryId]?.name ?? '')
+        .join(' ')
+        .toLowerCase()
       const matchesCategory =
-        activeCategoryId === 'all' ||
-        assignedCategoryIds.includes(activeCategoryId)
+        activeCategoryIds.length === 0 ||
+        activeCategoryIds.every((categoryId) =>
+          assignedCategoryIds.includes(categoryId),
+        )
       const isChecked = entryMarksById[entry.id]?.isChecked ?? false
       const matchesMark = !showUncheckedOnly || !isChecked
+      const searchableText = `${getEntrySearchText(entry)} ${assignedCategoryText}`
       const matchesQuery =
-        normalizedQuery.length === 0 ||
-        getEntrySearchText(entry).includes(normalizedQuery)
+        queryTokens.length === 0 ||
+        queryTokens.every((token) => searchableText.includes(token))
 
       return matchesCategory && matchesMark && matchesQuery
+    }).sort((leftEntry, rightEntry) => {
+      const leftTime = getEntryCreatedTime(leftEntry)
+      const rightTime = getEntryCreatedTime(rightEntry)
+
+      return sortOrder === 'recent'
+        ? rightTime - leftTime
+        : leftTime - rightTime
     })
   }, [
-    activeCategoryId,
+    activeCategoryIds,
     entries,
     entryCategoryIdsByEntryId,
     entryMarksById,
     searchQuery,
     showUncheckedOnly,
+    sortOrder,
+    statusFilter,
+    userCategoriesById,
   ])
 
   useEffect(() => {
-    if (
-      activeCategoryId !== 'all' &&
-      !userCategories.some((category) => category.id === activeCategoryId)
-    ) {
-      setActiveCategoryId('all')
-    }
-  }, [activeCategoryId, userCategories])
+    const validCategoryIds = new Set(userCategories.map((category) => category.id))
+    setActiveCategoryIds((currentIds) =>
+      currentIds.filter((categoryId) => validCategoryIds.has(categoryId)),
+    )
+  }, [userCategories])
 
   useEffect(() => {
     if (!user || isLoadingUserCategories) {
@@ -552,6 +655,7 @@ export function EntriesHomePage() {
       return
     }
 
+    const nextStatus = entry.status === 'archived' ? 'draft' : 'archived'
     setArchivingId(entry.id)
     setErrorMessage(null)
     setActionMessage(null)
@@ -565,7 +669,7 @@ export function EntriesHomePage() {
         sourceType: entry.sourceType,
         sourceName: entry.sourceName,
         sourceUrl: entry.sourceUrl,
-        status: 'archived',
+        status: nextStatus,
         aiTags: entry.aiTags,
         extractedText: entry.extractedText,
         metadata: entry.metadata,
@@ -574,10 +678,18 @@ export function EntriesHomePage() {
       })
 
       setEntries((currentEntries) =>
-        currentEntries.filter((currentEntry) => currentEntry.id !== entry.id),
+        currentEntries.map((currentEntry) =>
+          currentEntry.id === entry.id
+            ? { ...currentEntry, status: nextStatus }
+            : currentEntry,
+        ),
       )
       setOpenSwipeEntryId(null)
-      setActionMessage('La entrada se archivo correctamente.')
+      setActionMessage(
+        nextStatus === 'archived'
+          ? 'La entrada se archivo correctamente.'
+          : 'La entrada volvio a tu biblioteca.',
+      )
     } catch (error) {
       setErrorMessage(
         error instanceof Error
@@ -600,6 +712,7 @@ export function EntriesHomePage() {
     setDragStartX(clientX)
     const nextStartOffset =
       openSwipeEntryId === entryId ? MOBILE_SWIPE_ACTIONS_WIDTH : 0
+    dragOffsetRef.current = nextStartOffset
     setDragStartOffsetX(nextStartOffset)
     setDragOffsetX(nextStartOffset)
     if (openSwipeEntryId && openSwipeEntryId !== entryId) {
@@ -612,11 +725,13 @@ export function EntriesHomePage() {
       return
     }
 
-    const nextOffset = Math.max(
-      0,
-      Math.min(MOBILE_SWIPE_ACTIONS_WIDTH, dragStartX - clientX + dragStartOffsetX),
+    const swipeDistance = Math.abs(dragStartX - clientX)
+    const nextOffset = Math.min(
+      MOBILE_SWIPE_ACTIONS_WIDTH,
+      swipeDistance + dragStartOffsetX,
     )
 
+    dragOffsetRef.current = nextOffset
     setDragOffsetX(nextOffset)
   }
 
@@ -625,13 +740,16 @@ export function EntriesHomePage() {
       return
     }
 
+    const finalOffset = dragOffsetRef.current
+
     setOpenSwipeEntryId(
-      dragOffsetX >= MOBILE_SWIPE_OPEN_THRESHOLD ? draggingSwipeEntryId : null,
+      finalOffset >= MOBILE_SWIPE_OPEN_THRESHOLD ? draggingSwipeEntryId : null,
     )
     setDraggingSwipeEntryId(null)
     setDragStartX(null)
     setDragStartOffsetX(0)
     setDragOffsetX(0)
+    dragOffsetRef.current = 0
   }
 
   // Compartido desactivado temporalmente en el frontend.
@@ -730,7 +848,7 @@ export function EntriesHomePage() {
           ),
         )
       }
-      setActiveCategoryId(nextCategory.id)
+      setActiveCategoryIds([nextCategory.id])
       setIsCreateCategoryModalOpen(false)
     } catch (error) {
       setCategoryErrorMessage(
@@ -765,9 +883,7 @@ export function EntriesHomePage() {
 
       setIsSetupModalOpen(false)
 
-      if (nextCategories[0]) {
-        setActiveCategoryId(nextCategories[0].id)
-      }
+      setActiveCategoryIds(nextCategories[0] ? [nextCategories[0].id] : [])
     } catch (error) {
       setCategoryErrorMessage(
         error instanceof Error
@@ -819,9 +935,10 @@ export function EntriesHomePage() {
       const nextCategories = await refreshUserCategories()
       await refreshEntryCategoryAssignments()
 
-      if (!nextCategories.some((currentCategory) => currentCategory.id === activeCategoryId)) {
-        setActiveCategoryId('all')
-      }
+      const nextCategoryIds = new Set(nextCategories.map((category) => category.id))
+      setActiveCategoryIds((currentIds) =>
+        currentIds.filter((categoryId) => nextCategoryIds.has(categoryId)),
+      )
     } catch (error) {
       setCategoryErrorMessage(
         error instanceof Error
@@ -923,12 +1040,12 @@ export function EntriesHomePage() {
               <button
                 type="button"
                 className={
-                  activeCategoryId === 'all'
+                  activeCategoryIds.length === 0
                     ? 'filter-chip filter-chip--active'
                     : 'filter-chip'
                 }
                 onClick={() => {
-                  setActiveCategoryId('all')
+                  setActiveCategoryIds([])
                   setCurrentPage(1)
                 }}
               >
@@ -939,19 +1056,20 @@ export function EntriesHomePage() {
                 <button
                   key={category.id}
                   type="button"
-                  className={`filter-chip ${
-                    activeCategoryId === category.id ? 'filter-chip--active' : ''
-                  } ${
-                    deleteModeCategoryId === category.id
-                      ? 'filter-chip--delete-mode'
-                      : ''
-                  }`.trim()}
-                  onTouchStart={() => {
-                    handleCategoryChipTouchStart(category.id)
+                  className={getCategoryChipClassName(category.id)}
+                  onPointerDown={(event) => {
+                    event.currentTarget.setPointerCapture?.(event.pointerId)
+                    handleCategoryChipPressStart(category.id, event.clientX, event.clientY)
                   }}
-                  onTouchEnd={handleCategoryChipTouchEnd}
-                  onTouchMove={handleCategoryChipTouchEnd}
-                  onTouchCancel={handleCategoryChipTouchEnd}
+                  onPointerUp={handleCategoryChipPressEnd}
+                  onPointerMove={(event) => {
+                    handleCategoryChipPressMove(event.clientX, event.clientY)
+                  }}
+                  onPointerCancel={handleCategoryChipPressEnd}
+                  onPointerLeave={handleCategoryChipPressEnd}
+                  onContextMenu={(event) => {
+                    event.preventDefault()
+                  }}
                   onClick={() => {
                     if (skipCategoryChipClickRef.current) {
                       skipCategoryChipClickRef.current = false
@@ -960,19 +1078,17 @@ export function EntriesHomePage() {
 
                     clearCategoryLongPressTimer()
 
-                    if (deleteModeCategoryId === category.id) {
+                    if (deleteModeCategoryId === category.id || isCategoryDeleteMode) {
                       setDeleteModeCategoryId(null)
                       void handleDeleteCategory(category)
                       return
                     }
 
                     setDeleteModeCategoryId(null)
-                    setActiveCategoryId(category.id)
-                    setCurrentPage(1)
+                    toggleCategoryFilter(category.id)
                   }}
                 >
-                  {category.name}
-                  {deleteModeCategoryId === category.id ? ' x' : ''}
+                  {renderCategoryChipContent(category)}
                 </button>
               ))}
 
@@ -1013,12 +1129,12 @@ export function EntriesHomePage() {
               <button
                 type="button"
                 className={
-                  activeCategoryId === 'all'
+                  activeCategoryIds.length === 0
                     ? 'filter-chip filter-chip--active'
                     : 'filter-chip'
                 }
                 onClick={() => {
-                  setActiveCategoryId('all')
+                  setActiveCategoryIds([])
                   setCurrentPage(1)
                 }}
               >
@@ -1029,19 +1145,20 @@ export function EntriesHomePage() {
                 <button
                   key={category.id}
                   type="button"
-                  className={`filter-chip ${
-                    activeCategoryId === category.id ? 'filter-chip--active' : ''
-                  } ${
-                    deleteModeCategoryId === category.id
-                      ? 'filter-chip--delete-mode'
-                      : ''
-                  }`.trim()}
-                  onTouchStart={() => {
-                    handleCategoryChipTouchStart(category.id)
+                  className={getCategoryChipClassName(category.id)}
+                  onPointerDown={(event) => {
+                    event.currentTarget.setPointerCapture?.(event.pointerId)
+                    handleCategoryChipPressStart(category.id, event.clientX, event.clientY)
                   }}
-                  onTouchEnd={handleCategoryChipTouchEnd}
-                  onTouchMove={handleCategoryChipTouchEnd}
-                  onTouchCancel={handleCategoryChipTouchEnd}
+                  onPointerUp={handleCategoryChipPressEnd}
+                  onPointerMove={(event) => {
+                    handleCategoryChipPressMove(event.clientX, event.clientY)
+                  }}
+                  onPointerCancel={handleCategoryChipPressEnd}
+                  onPointerLeave={handleCategoryChipPressEnd}
+                  onContextMenu={(event) => {
+                    event.preventDefault()
+                  }}
                   onClick={() => {
                     if (skipCategoryChipClickRef.current) {
                       skipCategoryChipClickRef.current = false
@@ -1050,19 +1167,17 @@ export function EntriesHomePage() {
 
                     clearCategoryLongPressTimer()
 
-                    if (deleteModeCategoryId === category.id) {
+                    if (deleteModeCategoryId === category.id || isCategoryDeleteMode) {
                       setDeleteModeCategoryId(null)
                       void handleDeleteCategory(category)
                       return
                     }
 
                     setDeleteModeCategoryId(null)
-                    setActiveCategoryId(category.id)
-                    setCurrentPage(1)
+                    toggleCategoryFilter(category.id)
                   }}
                 >
-                  {category.name}
-                  {deleteModeCategoryId === category.id ? ' x' : ''}
+                  {renderCategoryChipContent(category)}
                 </button>
               ))}
 
@@ -1079,6 +1194,21 @@ export function EntriesHomePage() {
             </div>
 
             <div className="library-toolbar__actions">
+              <button
+                type="button"
+                className={
+                  isCategoryDeleteMode
+                    ? 'button--ghost library-toolbar__manage-categories library-toolbar__manage-categories--active'
+                    : 'button--ghost library-toolbar__manage-categories'
+                }
+                onClick={() => {
+                  setDeleteModeCategoryId(null)
+                  setIsCategoryDeleteMode((currentValue) => !currentValue)
+                }}
+              >
+                {isCategoryDeleteMode ? 'Listo' : 'Borrar tags'}
+              </button>
+
               <button
                 type="button"
                 className="button--ghost library-toolbar__manage-categories"
@@ -1100,23 +1230,59 @@ export function EntriesHomePage() {
               </Link>
             </div>
 
-            <label className="entry-mark-toggle">
-              <input
-                type="checkbox"
-                checked={showUncheckedOnly}
-                onChange={(event) => {
-                  setShowUncheckedOnly(event.target.checked)
-                  setCurrentPage(1)
-                }}
-              />
-              <span>Solo no vistas</span>
-            </label>
+            <div className="library-toolbar__toggle-group" aria-label="Filtros de estado">
+              <label className="entry-mark-toggle">
+                <input
+                  type="checkbox"
+                  checked={statusFilter === 'active'}
+                  onChange={() => {
+                    setStatusFilter('active')
+                    setCurrentPage(1)
+                  }}
+                />
+                <span>Activas</span>
+              </label>
 
-            <div className="library-toolbar__sort" aria-label="Orden de entradas">
-              <span>Ordenar:</span>
-              <strong>Mas recientes</strong>
-              <span aria-hidden="true">v</span>
+              <label className="entry-mark-toggle">
+                <input
+                  type="checkbox"
+                  checked={statusFilter === 'archived'}
+                  onChange={() => {
+                    setStatusFilter('archived')
+                    setCurrentPage(1)
+                  }}
+                />
+                <span>Archivadas</span>
+              </label>
+
+              <label className="entry-mark-toggle">
+                <input
+                  type="checkbox"
+                  checked={showUncheckedOnly}
+                  onChange={(event) => {
+                    setShowUncheckedOnly(event.target.checked)
+                    setCurrentPage(1)
+                  }}
+                />
+                <span>Solo no vistas</span>
+              </label>
             </div>
+
+            <button
+              type="button"
+              className="library-toolbar__sort"
+              aria-label="Cambiar orden de entradas"
+              onClick={() => {
+                setSortOrder((currentOrder) =>
+                  currentOrder === 'recent' ? 'oldest' : 'recent',
+                )
+                setCurrentPage(1)
+              }}
+            >
+              <span>Ordenar:</span>
+              <strong>{sortOrder === 'recent' ? 'Mas recientes' : 'Mas antiguas'}</strong>
+              <span aria-hidden="true">v</span>
+            </button>
           </section>
 
           {isLoading ? (
@@ -1167,13 +1333,24 @@ export function EntriesHomePage() {
                         : 0
                   const isSwipeBusy =
                     deletingId === entry.id || archivingId === entry.id
+                  const areSwipeActionsVisible = swipeOffset > 8
                   const rowCategories = (entryCategoryIdsByEntryId[entry.id] ?? [])
                     .map((categoryId) => userCategoriesById[categoryId])
                     .filter((category): category is CategoryRecord => Boolean(category))
 
                   return (
                     <div className="library-row-swipe-shell" key={entry.id}>
-                      <div className="library-row-swipe-actions" aria-hidden={!isSwipeOpen}>
+                      <div
+                        className={[
+                          'library-row-swipe-actions',
+                          areSwipeActionsVisible
+                            ? 'library-row-swipe-actions--visible'
+                            : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
+                        aria-hidden={!areSwipeActionsVisible}
+                      >
                         <button
                           type="button"
                           className="library-row-swipe-action library-row-swipe-action--archive"
@@ -1182,7 +1359,13 @@ export function EntriesHomePage() {
                             void handleArchive(entry)
                           }}
                         >
-                          {archivingId === entry.id ? 'Archivando...' : 'Archivar'}
+                          {archivingId === entry.id
+                            ? entry.status === 'archived'
+                              ? 'Restaurando...'
+                              : 'Archivando...'
+                            : entry.status === 'archived'
+                              ? 'Restaurar'
+                              : 'Archivar'}
                         </button>
                         <button
                           type="button"
@@ -1274,18 +1457,19 @@ export function EntriesHomePage() {
                           </div>
                         </div>
 
-                        <span className="library-row__bookmark" aria-hidden="true">
-                          <svg viewBox="0 0 24 24" className="library-row__bookmark-icon">
-                            <path
-                              d="M7 4.75A2.25 2.25 0 0 1 9.25 2.5h5.5A2.25 2.25 0 0 1 17 4.75v16.1l-5-3.15-5 3.15V4.75Z"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.8"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
-                        </span>
                       </Link>
+
+                      <label className="library-row__seen-toggle">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          disabled={markingId === entry.id}
+                          onChange={() => {
+                            void handleToggleMark(entry)
+                          }}
+                        />
+                        <span>Visto</span>
+                      </label>
 
                       <div className="library-row__actions">
                         <label className="entry-mark-toggle">

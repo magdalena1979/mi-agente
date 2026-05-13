@@ -21,6 +21,30 @@ const ENTRY_TYPES = [
   'collection',
   'other',
 ] as const
+const SPANISH_WEEKDAYS = [
+  'domingo',
+  'lunes',
+  'martes',
+  'miercoles',
+  'jueves',
+  'viernes',
+  'sabado',
+] as const
+const SPANISH_MONTHS: Record<string, number> = {
+  enero: 1,
+  febrero: 2,
+  marzo: 3,
+  abril: 4,
+  mayo: 5,
+  junio: 6,
+  julio: 7,
+  agosto: 8,
+  septiembre: 9,
+  setiembre: 9,
+  octubre: 10,
+  noviembre: 11,
+  diciembre: 12,
+}
 
 export class AnalyzeEntryValidationError extends Error {}
 export class AnalyzeEntryUpstreamError extends Error {}
@@ -212,6 +236,196 @@ function getImageMimeTypeFromDataUrl(dataUrl: string) {
 
 function cleanText(text: string) {
   return text.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+function stripAccents(text: string) {
+  return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+}
+
+function getCurrentYear() {
+  return new Date().getFullYear()
+}
+
+function getSpanishWeekday(year: number, month: number, day: number) {
+  return SPANISH_WEEKDAYS[
+    new Date(Date.UTC(year, month - 1, day, 12)).getUTCDay()
+  ]
+}
+
+function isValidCalendarDate(year: number, month: number, day: number) {
+  const date = new Date(Date.UTC(year, month - 1, day, 12))
+
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  )
+}
+
+function formatSpanishDayMonth(day: number, month: number) {
+  const monthName = Object.entries(SPANISH_MONTHS).find(
+    ([name, value]) => value === month && name !== 'setiembre',
+  )?.[0]
+
+  return monthName ? `${day} de ${monthName}` : `${day}/${month}`
+}
+
+type DateMention = {
+  weekday: string
+  day: number
+  month: number
+  year: number | null
+  raw: string
+}
+
+function parseSpanishDateMentions(text: string): DateMention[] {
+  const normalizedText = stripAccents(cleanText(text).toLowerCase())
+  const monthAlternatives = Object.keys(SPANISH_MONTHS).join('|')
+  const weekdayAlternatives = SPANISH_WEEKDAYS.join('|')
+  const mentions: DateMention[] = []
+  const weekdayDatePattern = new RegExp(
+    `\\b(${weekdayAlternatives})\\b\\s*,?\\s*(\\d{1,2})\\s*(?:de\\s+)?(${monthAlternatives})(?:\\s*(?:de\\s+)?(\\d{4}))?`,
+    'gi',
+  )
+  const dateWeekdayPattern = new RegExp(
+    `\\b(\\d{1,2})\\s*(?:de\\s+)?(${monthAlternatives})(?:\\s*(?:de\\s+)?(\\d{4}))?\\s*,?\\s*\\b(${weekdayAlternatives})\\b`,
+    'gi',
+  )
+
+  for (const match of normalizedText.matchAll(weekdayDatePattern)) {
+    const weekday = match[1]
+    const day = Number(match[2])
+    const month = SPANISH_MONTHS[match[3]]
+    const year = match[4] ? Number(match[4]) : null
+
+    if (weekday && month && Number.isInteger(day)) {
+      mentions.push({ weekday, day, month, year, raw: match[0] })
+    }
+  }
+
+  for (const match of normalizedText.matchAll(dateWeekdayPattern)) {
+    const day = Number(match[1])
+    const month = SPANISH_MONTHS[match[2]]
+    const year = match[3] ? Number(match[3]) : null
+    const weekday = match[4]
+
+    if (weekday && month && Number.isInteger(day)) {
+      mentions.push({ weekday, day, month, year, raw: match[0] })
+    }
+  }
+
+  return mentions
+}
+
+function getIsoDateParts(text: string) {
+  const match = cleanText(text).match(/\b(\d{4})-(\d{2})-(\d{2})\b/)
+
+  if (!match) {
+    return null
+  }
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+
+  if (!isValidCalendarDate(year, month, day)) {
+    return null
+  }
+
+  return { year, month, day }
+}
+
+function appendFieldNote(existingNote: string, note: string) {
+  const cleanedExistingNote = cleanText(existingNote)
+
+  if (cleanedExistingNote.toLowerCase().includes(note.toLowerCase())) {
+    return cleanedExistingNote
+  }
+
+  return cleanText([cleanedExistingNote, note].filter(Boolean).join(' '))
+}
+
+function getDateEvidenceText(payload: AnalyzeEntryPreparedPayload) {
+  return cleanText(
+    [
+      payload.combinedExtractedText,
+      ...payload.ocrTextByImage.map((item) => item.text),
+    ].join(' '),
+  )
+}
+
+function normalizeAmbiguousEventDate(
+  result: z.infer<typeof aiAnalysisSchema>,
+  payload: AnalyzeEntryPreparedPayload,
+) {
+  if (result.detectedType !== 'event' && result.detectedType !== 'trip') {
+    return result
+  }
+
+  const dateField = cleanText(result.fields.date)
+  const evidenceText = getDateEvidenceText(payload)
+  const allMentions = [
+    ...parseSpanishDateMentions(dateField),
+    ...parseSpanishDateMentions(evidenceText),
+  ]
+  const dateMention = allMentions.find((mention) => mention.weekday)
+
+  if (!dateMention) {
+    return result
+  }
+
+  const visibleYear = parseSpanishDateMentions(evidenceText).some(
+    (mention) =>
+      mention.day === dateMention.day &&
+      mention.month === dateMention.month &&
+      mention.year !== null,
+  )
+  const isoDate = getIsoDateParts(dateField)
+  const yearToValidate = dateMention.year ?? isoDate?.year ?? getCurrentYear()
+  const expectedWeekday = getSpanishWeekday(
+    yearToValidate,
+    dateMention.month,
+    dateMention.day,
+  )
+
+  const dateWithoutWeekday = formatSpanishDayMonth(
+    dateMention.day,
+    dateMention.month,
+  )
+
+  if (!visibleYear && !isoDate) {
+    const note =
+      expectedWeekday === dateMention.weekday
+        ? `La imagen no muestra ano para ${dateWithoutWeekday}; confirmar el ano antes de guardarlo como fecha completa.`
+        : `La imagen no muestra ano para ${dateWithoutWeekday}; dice ${dateMention.weekday}, pero en ${yearToValidate} cae ${expectedWeekday}. Revisar el ano antes de confirmar.`
+
+    return {
+      ...result,
+      fields: {
+        ...result.fields,
+        date: `${dateWithoutWeekday} (ano no visible)`,
+        note: appendFieldNote(result.fields.note, note),
+      },
+      confidence: Math.min(result.confidence, 0.72),
+    }
+  }
+
+  if (expectedWeekday === dateMention.weekday) {
+    return result
+  }
+
+  const note =
+    `La fecha detectada no se guardo como fecha cerrada porque "${dateMention.raw}" no coincide con el calendario de ${yearToValidate}: cae ${expectedWeekday}.`
+
+  return {
+    ...result,
+    fields: {
+      ...result.fields,
+      date: `${dateWithoutWeekday} (ano no visible)`,
+      note: appendFieldNote(result.fields.note, note),
+    },
+    confidence: Math.min(result.confidence, 0.72),
+  }
 }
 
 function decodeHtmlEntities(text: string) {
@@ -614,6 +828,8 @@ function buildPrompt(payload: AnalyzeEntryPreparedPayload, linkEvidence: LinkEvi
     source: isLinkSource ? 'link' : 'screenshot',
     language: 'auto',
   }
+  const multiImageContext =
+    payload.images.length > 1 || payload.ocrTextByImage.length > 1
 
   return [
     isLinkSource
@@ -627,6 +843,21 @@ function buildPrompt(payload: AnalyzeEntryPreparedPayload, linkEvidence: LinkEvi
     'Primary task: extract a title, detect the content type (book, series, movie, article, idea, place, trip, recipe, plant, garden, collection or other), and write a clear useful summary from the OCR text and any available screenshot evidence.',
     'Classify the entry as exactly one of: book, event, recipe, movie, series, article, place, trip, plant, garden, collection, other.',
     'Return valid JSON only.',
+    multiImageContext
+      ? 'Multi-screenshot rule: first inspect every image separately, then compare them and decide what the screenshots have in common before choosing the title.'
+      : '',
+    multiImageContext
+      ? 'If multiple screenshots show different items connected by the same festival, award, venue, list, theme, brand, creator, trip, place or collection, make that shared factor the title instead of choosing only one item.'
+      : '',
+    multiImageContext
+      ? 'If two movie screenshots are tied by Cannes, Festival de Cannes, Cannes Film Festival, official selection, competition, Palme d Or or similar festival context, prefer a collection-style entry titled "Festival de Cannes" or "Peliculas del Festival de Cannes" unless one specific film is clearly the only intended subject.'
+      : '',
+    multiImageContext
+      ? 'When multiple screenshots show separate movies, books, places or articles under one shared context, set detectedType to "collection" unless the shared context is clearly an event, trip or place.'
+      : '',
+    multiImageContext
+      ? 'The summary should mention the shared factor and briefly name the individual items when visible, without letting the first screenshot dominate the result.'
+      : '',
     'Important domain rules:',
     '- If the screenshot is clearly from Instagram, set sourceName to "Instagram" or "Instagram @username" when the handle is visible.',
     '- Treat the visual UI as evidence, not just OCR text. If you see a profile header, Follow/Seguir button, like/comment/share icons, Instagram-style carousel dots, reels/post layout or an Instagram profile/post composition, identify it as Instagram even if the OCR misses the word Instagram.',
@@ -650,6 +881,12 @@ function buildPrompt(payload: AnalyzeEntryPreparedPayload, linkEvidence: LinkEvi
     '- For clearly identified books, enrich the result with useful known facts when confidence is high: brief context about the book, its premise, the author, genre, or why it is notable.',
     '- For clearly identified books, articles or places, you may also add one short useful contextual note in fields.note when it is reliable and helps the user remember why it matters.',
     '- Do not invent facts. Only enrich when the match is strong and the extra data is likely correct.',
+    '- For events, never infer a year from the current date when the screenshot only shows a day and month.',
+    '- For event flyers, read date digits carefully from the image itself. Do not change 23 into 25, 18, 28 or another nearby day to make the calendar fit.',
+    '- For events, when OCR text and the screenshot image disagree about a day number, trust the visible image only if the digits are clear; otherwise keep fields.date conservative and explain the uncertainty in fields.note.',
+    '- For events, if the visible text has a weekday plus day/month but no year, keep fields.date as day/month without a weekday or year, and mention the ambiguity in fields.note.',
+    '- For events, only output an ISO date like YYYY-MM-DD when the year is visible or reliable from source metadata.',
+    '- For events, if a weekday conflicts with the calendar year, do not choose a corrected date. Preserve the visible day/month and explain the conflict in fields.note.',
     'Output rules:',
     '- title and summary must be in Spanish.',
     '- sourceName should capture the visible source/platform when useful, especially for social screenshots and links.',
@@ -865,5 +1102,8 @@ export async function analyzeEntryPayload(
     )
   }
 
-  return createLinkFallbackAnalysis(normalizeAiAnalysis(parsedContent), payload, linkEvidence)
+  return normalizeAmbiguousEventDate(
+    createLinkFallbackAnalysis(normalizeAiAnalysis(parsedContent), payload, linkEvidence),
+    payload,
+  )
 }
