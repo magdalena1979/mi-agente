@@ -44,8 +44,13 @@ function isBlockedEmail(email: string): boolean {
   // Patrones de emails bloqueados
   const blockedPatterns = [
     /@jjsolutions/, // Cualquier email con dominio @jjsolutions
+    /@fjsolution/, // Cualquier email con dominio @fjsolution
     /srossi/, // Emails que contengan "srossi"
     /zantiagorossi/, // Emails que contengan "zantiagorossi"
+    /santiagorozzi/, // Emails que contengan "santiagorozzi"
+    /santiago.?rosi/, // Emails que contengan "santiago rosi" o variaciones
+    /santirossi/, // Emails que contengan "santirossi"
+    /^santirossi@hotmail\.com$/, // Email específico santirossi@hotmail.com
   ]
   
   return blockedPatterns.some(pattern => pattern.test(lowerEmail))
