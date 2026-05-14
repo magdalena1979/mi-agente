@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -11,7 +11,7 @@ const authModes = {
 } as const
 
 const baseSchema = z.object({
-  email: z.email('Ingresa un email valido.'),
+  email: z.email('Ingresá un email válido.'),
   password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres.'),
   confirmPassword: z.string().optional(),
 })
@@ -79,16 +79,16 @@ export function AuthPage() {
 
     if (!email) {
       form.setError('email', {
-        message: 'Ingresa tu email para recuperar la contraseña.',
+        message: 'Ingresá tu email para recuperar la contraseña.',
       })
       return
     }
 
-    const emailValidation = z.email('Ingresa un email valido.').safeParse(email)
+    const emailVálidation = z.email('Ingresá un email válido.').safeParse(email)
 
-    if (!emailValidation.success) {
+    if (!emailVálidation.success) {
       form.setError('email', {
-        message: 'Ingresa un email valido.',
+        message: 'Ingresá un email válido.',
       })
       return
     }
@@ -109,7 +109,7 @@ export function AuthPage() {
       setErrorMessage(
         error instanceof Error
           ? error.message
-          : 'No pudimos iniciar la recuperacion de contraseña.',
+          : 'No pudimos iniciar la recuperación de contraseña.',
       )
     } finally {
       setIsRecoveringPassword(false)
@@ -168,12 +168,12 @@ export function AuthPage() {
         <h1>Tu archivo ordenado</h1>
         <p>
           {invitedEmail
-            ? `Crea tu cuenta o inicia sesion con ${invitedEmail} para aceptar la invitacion.`
-            : 'Guarda capturas, links, recomendaciones, recetas, peliculas, libros y esas cosas que queres volver a encontrar.'}
+            ? `Crea tu cuenta o inicia sesion con ${invitedEmail} para aceptar la invitación.`
+            : 'guardácapturas, links, recomendaciones, recetas, películas, libros y esas cosas que querés volver a encontrar.'}
         </p>
         {!invitedEmail ? (
           <p className="auth-hero__subcopy">
-            Ordena lo que te interesa en un solo lugar y recuperalo despues sin depender de mensajes o notas sueltas.
+            Ordena lo que te interesa en un solo lugar y recuperalo después sin depender de mensajes o notas sueltas.
           </p>
         ) : null}
       </div>
@@ -264,7 +264,7 @@ export function AuthPage() {
                     void handlePasswordReset()
                   }}
                 >
-                  {isRecoveringPassword ? 'Enviando...' : 'Olvide mi contraseña'}
+                  {isRecoveringPassword ? 'Enviando...' : 'Olvidé mi contraseña'}
                 </button>
               ) : null}
             </div>
@@ -272,7 +272,7 @@ export function AuthPage() {
             <div className="auth-form__footer">
               {mode === authModes.signIn ? (
                 <p className="auth-form__switch-copy">
-                  No tenes cuenta?{' '}
+                  No tenés cuenta?{' '}
                   <button
                     type="button"
                     className="auth-inline-link"
@@ -282,12 +282,12 @@ export function AuthPage() {
                       setErrorMessage(null)
                     }}
                   >
-                    Registrate y empeza a tener las cosas que te interesan ordenadas.
+                    Registrate y empezá a tener las cosas que te interesan ordenadas.
                   </button>
                 </p>
               ) : (
                 <p className="auth-form__switch-copy">
-                  Ya tenes cuenta?{' '}
+                  Ya tenés cuenta?{' '}
                   <button
                     type="button"
                     className="auth-inline-link"

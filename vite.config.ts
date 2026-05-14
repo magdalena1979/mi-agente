@@ -137,6 +137,9 @@ export default defineConfig(({ mode }) => {
         devOptions: {
           enabled: false,
         },
+        workbox: {
+          globIgnores: ['**/pdf*.js', '**/pdf.worker*.mjs'],
+        },
         includeAssets: [
           'logo.png',
           'pwa-192.png',

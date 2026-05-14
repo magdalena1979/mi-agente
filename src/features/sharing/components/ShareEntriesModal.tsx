@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 
 import {
   createEntriesShareInvitation,
@@ -16,7 +16,7 @@ type ShareEntriesModalProps = {
 function getErrorMessage(error: unknown) {
   return error instanceof Error
     ? error.message
-    : 'No pudimos crear la invitacion.'
+    : 'No pudimos crear la invitación.'
 }
 
 export function ShareEntriesModal({
@@ -40,7 +40,7 @@ export function ShareEntriesModal({
     const normalizedEmail = email.trim().toLowerCase()
 
     if (!normalizedEmail) {
-      setErrorMessage('Ingresa un email para continuar.')
+      setErrorMessage('Ingresá un email para continuar.')
       return
     }
 
@@ -65,7 +65,7 @@ export function ShareEntriesModal({
         inviteLink: nextInviteLink,
       })
 
-      setSuccessMessage('Invitacion enviada correctamente.')
+      setSuccessMessage('Invitación enviada correctamente.')
 
       setEmail('')
       await onSuccess?.()
@@ -109,7 +109,7 @@ export function ShareEntriesModal({
 
           <div className="entry-form__actions">
             <button type="submit" className="button" disabled={isSubmitting}>
-              {isSubmitting ? 'Enviando...' : 'Enviar invitacion'}
+              {isSubmitting ? 'Enviando...' : 'Enviar invitación'}
             </button>
 
             <button

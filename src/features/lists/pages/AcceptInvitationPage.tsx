@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { useAuth } from '@/features/auth/auth-context'
@@ -11,22 +11,22 @@ import type { InvitationLookupRecord } from '@/types/lists'
 function getErrorMessage(error: unknown) {
   return error instanceof Error
     ? error.message
-    : 'No pudimos aceptar la invitacion.'
+    : 'No pudimos aceptar la invitación.'
 }
 
 function getInvitationTitle(invitation: InvitationLookupRecord | null) {
   if (!invitation) {
-    return 'Aceptar invitacion'
+    return 'Aceptar invitación'
   }
 
   return invitation.listId
-    ? 'Aceptar invitacion a lista'
+    ? 'Aceptar invitación a lista'
     : 'Aceptar acceso compartido'
 }
 
 function getInvitationDescription(invitation: InvitationLookupRecord | null) {
   if (!invitation) {
-    return 'Usa este paso para sumarte a una invitacion compartida.'
+    return 'Usa este paso para sumarte a una invitación compartida.'
   }
 
   return invitation.listId
@@ -70,7 +70,7 @@ export function AcceptInvitationPage() {
 
     async function loadInvitation() {
       if (!token) {
-        setErrorMessage('La invitacion no tiene un token valido.')
+        setErrorMessage('La invitación no tiene un token válido.')
         setIsLoading(false)
         return
       }
@@ -83,9 +83,9 @@ export function AcceptInvitationPage() {
 
         if (!ignore) {
           if (!nextInvitation) {
-            setErrorMessage('No encontramos una invitacion pendiente para este link.')
+            setErrorMessage('No encontramos una invitación pendiente para este link.')
           } else if (nextInvitation.status !== 'pending') {
-            setErrorMessage('Esta invitacion ya fue aceptada o ya no esta disponible.')
+            setErrorMessage('Esta invitación ya fue aceptada o ya no está disponible.')
           } else {
             setInvitation(nextInvitation)
           }
@@ -126,7 +126,7 @@ export function AcceptInvitationPage() {
 
       setSuccessMessage(
         invitation.listId
-          ? 'Ya formas parte de la lista compartida.'
+          ? 'Ya formás parte de la lista compartida.'
           : 'Ya tienes acceso a las entradas compartidas.',
       )
       navigate(invitation.listId ? `/lists/${invitation.listId}` : '/', {
@@ -147,7 +147,7 @@ export function AcceptInvitationPage() {
           <p>{getInvitationDescription(invitation)}</p>
         </div>
 
-        {isLoading ? <p className="muted">Buscando invitacion...</p> : null}
+        {isLoading ? <p className="muted">Buscando invitación...</p> : null}
         {errorMessage ? <p className="feedback feedback--error">{errorMessage}</p> : null}
         {successMessage ? (
           <p className="feedback feedback--success">{successMessage}</p>
@@ -164,7 +164,7 @@ export function AcceptInvitationPage() {
               </strong>
             </div>
             <div className="detail-fact">
-              <span>Invitacion para</span>
+              <span>Invitación para</span>
               <strong>{invitation.email}</strong>
             </div>
             <div className="detail-fact">
@@ -176,8 +176,8 @@ export function AcceptInvitationPage() {
 
         {!isLoading && invitation && !user ? (
           <p className="feedback feedback--success">
-            Para aceptar esta invitacion primero crea tu cuenta o inicia sesion con
-            contraseña. Despues volveras automaticamente a este link.
+            Para aceptar esta invitación primero crea tu cuenta o inicia sesion con
+            contraseña. Después volveras automáticamente a este link.
           </p>
         ) : null}
 
@@ -191,7 +191,7 @@ export function AcceptInvitationPage() {
                 void handleAccept()
               }}
             >
-              {isSubmitting ? 'Aceptando...' : 'Aceptar invitacion'}
+              {isSubmitting ? 'Aceptando...' : 'Aceptar invitación'}
             </button>
           ) : null}
 

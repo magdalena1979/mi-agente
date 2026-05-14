@@ -24,8 +24,14 @@ import {
 import {
   createAnalysisImageDataUrl,
   getAnalysisImageResizeOptions,
+  sanitizeStorageFileName,
 } from '@/features/entries/image-utils'
 import { extractTextFromImage } from '@/features/ocr/services/browser-ocr'
+import {
+  isPdfFile,
+  MAX_PDF_PAGES_FOR_ANALYSIS,
+  renderPdfFileToImageFiles,
+} from '@/features/ocr/services/pdf-pages'
 import { createClientUuid } from '@/lib/random-id'
 import type { CategoryRecord } from '@/types/categories'
 import { ENTRY_FIELD_KEYS, type PendingUploadImage } from '@/types/entries'
@@ -41,6 +47,12 @@ type OcrImageResult = {
 const MAX_ENTRY_CAPTURES = 2
 const MAX_INITIAL_AI_ANALYSES = 1
 type NewEntryStep = 1 | 2 | 3
+type PendingDocument = {
+  name: string
+  size: number
+  totalPages: number
+  renderedPages: number
+}
 
 function reindexImages(images: PendingUploadImage[]) {
   return images.map((image, index) => ({
@@ -120,6 +132,8 @@ function formatSourceTypeLabel(sourceType: EntryFormValues['sourceType']) {
   switch (sourceType) {
     case 'link':
       return 'Link'
+    case 'pdf':
+      return 'PDF'
     case 'manual':
       return 'Manual'
     default:
@@ -142,6 +156,7 @@ function hasGeneratedFormContent(values: EntryFormValues) {
 function getHeroHighlights(
   values: EntryFormValues,
   pendingImages: PendingUploadImage[],
+  pendingDocument: PendingDocument | null,
   analysisConfidence: number | null,
 ) {
   const highlights: Array<{ label: string; value: string }> = []
@@ -161,8 +176,10 @@ function getHeroHighlights(
 
   if (pendingImages.length > 0) {
     highlights.push({
-      label: 'Capturas',
-      value: `${pendingImages.length}/${MAX_ENTRY_CAPTURES}`,
+      label: pendingDocument ? 'PDF' : 'Capturas',
+      value: pendingDocument
+        ? `${pendingDocument.renderedPages}/${pendingDocument.totalPages}`
+        : `${pendingImages.length}/${MAX_ENTRY_CAPTURES}`,
     })
   }
 
@@ -178,12 +195,12 @@ function getHeroHighlights(
     case 'series':
       pushIfPresent('Plataforma', values.platform)
       pushIfPresent('Director', values.director)
-      pushIfPresent('Genero', values.genre)
-      pushIfPresent('Ano', values.year)
+      pushIfPresent('Género', values.genre)
+      pushIfPresent('Año', values.year)
       break
     case 'book':
       pushIfPresent('Autor', values.author)
-      pushIfPresent('Genero', values.genre)
+      pushIfPresent('Género', values.genre)
       break
     case 'event':
       pushIfPresent('Fecha', values.date)
@@ -269,6 +286,36 @@ function inferTagNamesFromValues(values: EntryFormValues) {
   return [...new Set(tagNames)]
 }
 
+function buildGeneratedEntryExport(values: EntryFormValues) {
+  return {
+    exportedAt: new Date().toISOString(),
+    type: values.type,
+    title: values.title.trim(),
+    summary: values.summary.trim(),
+    source: {
+      type: values.sourceType,
+      name: values.sourceName.trim(),
+      url: values.sourceUrl.trim(),
+    },
+    tags: parseTags(values.tagsText),
+    extractedText: values.extractedText.trim(),
+    metadata: getEntryMetadataFromForm(values),
+  }
+}
+
+function downloadJsonFile(fileName: string, payload: unknown) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: 'application/json;charset=utf-8',
+  })
+  const objectUrl = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+
+  link.href = objectUrl
+  link.download = fileName
+  link.click()
+  URL.revokeObjectURL(objectUrl)
+}
+
 export function NewEntryPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -277,6 +324,7 @@ export function NewEntryPage() {
   const [linkInput, setLinkInput] = useState('')
 
   const [pendingImages, setPendingImages] = useState<PendingUploadImage[]>([])
+  const [pendingDocument, setPendingDocument] = useState<PendingDocument | null>(null)
   const [draftEntryId, setDraftEntryId] = useState<string | null>(null)
   const [instagramPastedText, setInstagramPastedText] = useState('')
   const [isInstagramTextMode, setIsInstagramTextMode] = useState(false)
@@ -295,6 +343,7 @@ export function NewEntryPage() {
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null)
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [isPreparingPdf, setIsPreparingPdf] = useState(false)
   const [isPastingImage, setIsPastingImage] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeStep, setActiveStep] = useState<NewEntryStep>(1)
@@ -308,8 +357,14 @@ export function NewEntryPage() {
   const hasValidLinkInput = isValidUrl(normalizedLinkInput)
 
   const heroHighlights = useMemo(
-    () => getHeroHighlights(formDefaults, pendingImages, analysisConfidence),
-    [analysisConfidence, formDefaults, pendingImages],
+    () =>
+      getHeroHighlights(
+        formDefaults,
+        pendingImages,
+        pendingDocument,
+        analysisConfidence,
+      ),
+    [analysisConfidence, formDefaults, pendingDocument, pendingImages],
   )
   const heroTags = useMemo(() => {
     const selectedCategoryNames = availableCategories
@@ -324,6 +379,7 @@ export function NewEntryPage() {
     formDefaults.sourceType === 'link' && formDefaults.sourceUrl.trim().length > 0
   const isInstagramPreparedLink = hasPreparedLink && isInstagramLink(formDefaults.sourceUrl)
   const isUsingImages = pendingImages.length > 0
+  const isUsingPdf = pendingDocument !== null
   const isUsingLink = normalizedLinkInput.length > 0 || hasPreparedLink
   const hasSourceReady = pendingImages.length > 0 || hasPreparedLink || hasValidLinkInput
   const hasAnalysisResult = analysisRunCount > 0
@@ -340,16 +396,20 @@ export function NewEntryPage() {
     formDefaults.title.trim() ||
     (formDefaults.sourceType === 'link'
       ? 'Link listo para revisar'
+      : formDefaults.sourceType === 'pdf'
+        ? 'PDF listo para analizar'
       : pendingImages.length > 0
         ? 'Capturas listas para analizar'
-        : 'Agrega una nueva entrada')
+        : 'Agregá una nueva entrada')
   const heroSummary =
     formDefaults.summary.trim() ||
     (formDefaults.sourceType === 'link'
-      ? 'Pega un link, deja que la IA cargue la ficha y revisala antes de guardarla.'
+      ? 'Pegá un link, deja que la IA cargue la ficha y revisala antes de guardarla.'
+      : formDefaults.sourceType === 'pdf'
+        ? ''
       : pendingImages.length > 0
-        ? 'Subi hasta dos capturas, corre la IA y revisa la ficha antes de guardarla.'
-        : 'Subi capturas o usa un link y arma una ficha con el mismo estilo visual del detalle.')
+        ? 'Subí hasta dos capturas, corre la IA y revisa la ficha antes de guardarla.'
+        : 'Subí capturas, un PDF o usa un link y arma una ficha con el mismo estilo visual del detalle.')
   const canAccessStep2 = hasSourceReady
   const canAccessStep3 = hasAnalysisResult
 
@@ -413,7 +473,7 @@ export function NewEntryPage() {
     }
   }, [])
 
-  function resetAnalysisState() {
+  function resetAnalysisState(overrides: Partial<EntryFormValues> = {}) {
     setInstagramPastedText('')
     setIsInstagramTextMode(false)
     setAnalysisConfidence(null)
@@ -426,15 +486,16 @@ export function NewEntryPage() {
     setFormDefaults(
       createEmptyEntryFormValues({
         sourceType: 'screenshot',
+        ...overrides,
       }),
     )
   }
 
-  function handleUseLink() {
-    const normalizedLink = linkInput.trim()
+  function handleUseLink(linkOverride?: string) {
+    const normalizedLink = (linkOverride ?? linkInput).trim()
 
     if (!normalizedLink) {
-      setAnalysisErrorMessage('Pega un link valido para continuar.')
+      setAnalysisErrorMessage('Pegá un link valido para continuar.')
       setLinkSuccessMessage(null)
       return
     }
@@ -442,12 +503,14 @@ export function NewEntryPage() {
     try {
       new URL(normalizedLink)
     } catch {
-      setAnalysisErrorMessage('Pega un link valido para continuar.')
+      setAnalysisErrorMessage('Pegá un link valido para continuar.')
       setLinkSuccessMessage(null)
       return
     }
 
+    setLinkInput(normalizedLink)
     setPendingImages([])
+    setPendingDocument(null)
     setInstagramPastedText('')
     setIsInstagramTextMode(false)
     setAnalysisConfidence(null)
@@ -456,7 +519,7 @@ export function NewEntryPage() {
     setLinkSuccessMessage(
       isInstagramLink(normalizedLink)
         ? 'Link de Instagram listo. Elige como quieres cargar el contenido.'
-        : 'Link listo. Ahora podes cargar datos con IA.',
+        : 'Link listo. Ahora podés cargar datos con IA.',
     )
     setSaveErrorMessage(null)
     setSaveSuccessMessage(null)
@@ -473,33 +536,50 @@ export function NewEntryPage() {
     })
   }
 
-  function appendImageFiles(selectedFiles: File[]) {
+  function appendImageFiles(
+    selectedFiles: File[],
+    options: {
+      sourceType?: EntryFormValues['sourceType']
+      sourceName?: string
+      keepPendingDocument?: boolean
+      replaceExisting?: boolean
+    } = {},
+  ) {
     if (selectedFiles.length === 0) {
       return
     }
 
-    if (pendingImages.length >= MAX_ENTRY_CAPTURES) {
-      setAnalysisErrorMessage('Cada entry puede tener como maximo 2 capturas.')
+    const currentImageCount = options.replaceExisting ? 0 : pendingImages.length
+
+    if (currentImageCount >= MAX_ENTRY_CAPTURES) {
+      setAnalysisErrorMessage('Cada entry puede tener como máximo 2 capturas.')
       return
     }
 
-    const availableSlots = MAX_ENTRY_CAPTURES - pendingImages.length
+    const availableSlots = MAX_ENTRY_CAPTURES - currentImageCount
     const filesToAppend = selectedFiles.slice(0, availableSlots)
 
     if (filesToAppend.length < selectedFiles.length) {
-      setAnalysisErrorMessage('Solo podes guardar hasta 2 capturas por entry.')
+      setAnalysisErrorMessage('Solo podés guardar hasta 2 capturas por entry.')
     } else {
       setAnalysisErrorMessage(null)
     }
 
     setPendingImages((currentImages) => {
+      if (options.replaceExisting) {
+        for (const image of currentImages) {
+          URL.revokeObjectURL(image.previewUrl)
+        }
+      }
+
+      const baseImages = options.replaceExisting ? [] : currentImages
       const nextImages = [
-        ...currentImages,
+        ...baseImages,
         ...filesToAppend.map((file, index) => ({
           id: createClientUuid(),
           file,
           previewUrl: URL.createObjectURL(file),
-          position: currentImages.length + index,
+          position: baseImages.length + index,
           ocrText: '',
           ocrStatus: 'idle' as const,
           ocrErrorMessage: null,
@@ -508,6 +588,10 @@ export function NewEntryPage() {
 
       return reindexImages(nextImages)
     })
+
+    if (!options.keepPendingDocument) {
+      setPendingDocument(null)
+    }
 
     setLinkInput('')
     setLinkSuccessMessage(null)
@@ -519,9 +603,29 @@ export function NewEntryPage() {
       setSaveErrorMessage(null)
       setSaveSuccessMessage(null)
     } else {
-      resetAnalysisState()
+      resetAnalysisState({
+        sourceType: options.sourceType ?? 'screenshot',
+        sourceName: options.sourceName ?? '',
+      })
     }
     setActiveStep(2)
+  }
+
+  function handleLinkInputChange(value: string) {
+    setLinkInput(value)
+    setAnalysisErrorMessage(null)
+    setLinkSuccessMessage(null)
+
+    const normalizedValue = value.trim()
+
+    if (
+      normalizedValue &&
+      isValidUrl(normalizedValue) &&
+      !isUsingImages &&
+      formDefaults.sourceUrl.trim() !== normalizedValue
+    ) {
+      handleUseLink(normalizedValue)
+    }
   }
 
   async function handlePasteImageFromClipboard() {
@@ -531,7 +635,7 @@ export function NewEntryPage() {
       typeof navigator.clipboard.read !== 'function'
     ) {
       setAnalysisErrorMessage(
-        'Tu navegador no permite pegar imagenes con boton. Prueba con Ctrl+V.',
+        'Tu navegador no permite pegar imágenes con boton. Prueba con Ctrl+V.',
       )
       return
     }
@@ -562,7 +666,7 @@ export function NewEntryPage() {
 
       if (imageFiles.length === 0) {
         setAnalysisErrorMessage(
-          'No encontramos una imagen en el portapapeles. Copia una imagen y vuelve a intentar.',
+          'No encontramos una imagen en el portapapeles. Copiá una imagen y volvé a intentar.',
         )
         return
       }
@@ -570,14 +674,14 @@ export function NewEntryPage() {
       appendImageFiles(imageFiles)
       setPasteSuccessMessage(
         imageFiles.length === 1
-          ? 'Imagen pegada. Ahora podes analizarla.'
-          : `${imageFiles.length} imagenes pegadas. Ahora podes analizarlas.`,
+          ? 'Imagen pegada. Ahora podés analizarla.'
+          : `${imageFiles.length} imágenes pegadas. Ahora podés analizarlas.`,
       )
     } catch (error) {
       setAnalysisErrorMessage(
         getErrorMessage(
           error,
-          'No pudimos leer una imagen del portapapeles. Prueba con Ctrl+V.',
+          'No pudimos leer una imagen del portapapeles. Probá con Ctrl+V.',
         ),
       )
     } finally {
@@ -585,12 +689,66 @@ export function NewEntryPage() {
     }
   }
 
-  function handleFilesSelected(event: React.ChangeEvent<HTMLInputElement>) {
-    const selectedFiles = Array.from(event.target.files ?? []).filter((file) =>
-      file.type.startsWith('image/'),
-    )
+  async function handlePdfSelected(file: File) {
+    setIsPreparingPdf(true)
+    setAnalysisErrorMessage(null)
+    setPasteSuccessMessage(null)
+    setLinkSuccessMessage(null)
+    setSaveErrorMessage(null)
+    setSaveSuccessMessage(null)
 
-    appendImageFiles(selectedFiles)
+    try {
+      const renderedPdf = await renderPdfFileToImageFiles(
+        file,
+        MAX_PDF_PAGES_FOR_ANALYSIS,
+      )
+
+      if (renderedPdf.files.length === 0) {
+        setAnalysisErrorMessage('No pudimos leer páginas del PDF seleccionado.')
+        return
+      }
+
+      setPendingDocument({
+        name: file.name,
+        size: file.size,
+        totalPages: renderedPdf.totalPages,
+        renderedPages: renderedPdf.renderedPages,
+      })
+      appendImageFiles(renderedPdf.files, {
+        sourceType: 'pdf',
+        sourceName: `PDF: ${file.name}`,
+        keepPendingDocument: true,
+        replaceExisting: true,
+      })
+      setPasteSuccessMessage(
+        renderedPdf.totalPages > renderedPdf.renderedPages
+          ? `PDF listo. Vamos a analizar las primeras ${renderedPdf.renderedPages} páginas para cuidar datos y espacio.`
+          : 'PDF listo. Ahora podés generar la ficha con IA/OCR.',
+      )
+    } catch (error) {
+      setPendingDocument(null)
+      setAnalysisErrorMessage(
+        getErrorMessage(error, 'No pudimos preparar el PDF para OCR.'),
+      )
+    } finally {
+      setIsPreparingPdf(false)
+    }
+  }
+
+  function handleFilesSelected(event: React.ChangeEvent<HTMLInputElement>) {
+    const selectedFiles = Array.from(event.target.files ?? [])
+    const pdfFiles = selectedFiles.filter(isPdfFile)
+    const imageFiles = selectedFiles.filter((file) => file.type.startsWith('image/'))
+
+    if (pdfFiles.length > 0) {
+      if (imageFiles.length > 0 || pdfFiles.length > 1) {
+        setAnalysisErrorMessage('Seleccioná un PDF o hasta dos capturas, no ambos a la vez.')
+      }
+
+      void handlePdfSelected(pdfFiles[0])
+    } else {
+      appendImageFiles(imageFiles)
+    }
 
     if (event.target) {
       event.target.value = ''
@@ -598,6 +756,8 @@ export function NewEntryPage() {
   }
 
   function handleRemoveImage(imageId: string) {
+    const nextImageCount = pendingImages.filter((image) => image.id !== imageId).length
+
     setPendingImages((currentImages) => {
       const imageToRemove = currentImages.find((image) => image.id === imageId)
 
@@ -607,6 +767,17 @@ export function NewEntryPage() {
 
       return reindexImages(currentImages.filter((image) => image.id !== imageId))
     })
+
+    if (pendingDocument) {
+      if (nextImageCount === 0) {
+        setPendingDocument(null)
+      } else {
+        setPendingDocument({
+          ...pendingDocument,
+          renderedPages: nextImageCount,
+        })
+      }
+    }
 
     if (isInstagramPreparedLink) {
       setAnalysisConfidence(null)
@@ -624,23 +795,36 @@ export function NewEntryPage() {
     }
   }
 
+  function handleClearPendingDocument() {
+    setPendingImages((currentImages) => {
+      for (const image of currentImages) {
+        URL.revokeObjectURL(image.previewUrl)
+      }
+
+      return []
+    })
+    setPendingDocument(null)
+    resetAnalysisState()
+    setActiveStep(1)
+  }
+
   async function handleAnalyze() {
     if (isInstagramPreparedLink && !hasInstagramSupportInput) {
       setAnalysisErrorMessage(
-        'Para links de Instagram, sube una captura o pega el texto del post para continuar.',
+        'Para links de Instagram, subí una captura o pegá el texto del post para continuar.',
       )
       return
     }
 
     if (analysisRunCount >= MAX_INITIAL_AI_ANALYSES) {
       setAnalysisErrorMessage(
-        'Ya usaste el analisis inicial. Si necesitas corregirlo, guarda la entry y usa el ultimo analisis desde editar.',
+        'Ya usaste el análisis inicial. Si necesitás corregirlo, guardá la entry y usá el último análisis desde editar.',
       )
       return
     }
 
     if (pendingImages.length === 0 && !hasPreparedLink) {
-      setAnalysisErrorMessage('Subi al menos una captura o pega un link para analizar.')
+      setAnalysisErrorMessage('Subí una captura, un PDF o pegá un link para analizar.')
       return
     }
 
@@ -652,7 +836,11 @@ export function NewEntryPage() {
 
     const snapshot = [...pendingImages]
     const sourceContext = {
-      sourceType: hasPreparedLink ? 'link' : 'screenshot',
+      sourceType: hasPreparedLink
+        ? 'link'
+        : pendingDocument
+          ? 'pdf'
+          : 'screenshot',
       sourceName: formDefaults.sourceName,
       sourceUrl: formDefaults.sourceUrl,
     } as const
@@ -751,7 +939,7 @@ export function NewEntryPage() {
 
       if (imagesForAnalysis.length === 0) {
         setIsAnalyzing(false)
-        setAnalysisErrorMessage('No pudimos preparar ninguna imagen para analisis.')
+        setAnalysisErrorMessage('No pudimos preparar ninguna imagen para análisis.')
         return
       }
     }
@@ -781,7 +969,7 @@ export function NewEntryPage() {
 
       if (!hasGeneratedFormContent(nextFormValues)) {
         setAnalysisErrorMessage(
-          'La IA termino el analisis, pero no devolvio informacion suficiente para precargar la ficha. Prueba con otra captura o revisa el link.',
+          'La IA terminó el análisis, pero no devolvió información suficiente para precargar la ficha. Probá con otra captura o revisá el link.',
         )
         return
       }
@@ -817,7 +1005,7 @@ export function NewEntryPage() {
       setAnalysisErrorMessage(
         getErrorMessage(
           error,
-          'No pudimos analizar esta entrada con IA. Podes revisar y guardar manualmente.',
+          'No pudimos analizar esta entrada con IA. Podés revisar y guardar manualmente.',
         ),
       )
     } finally {
@@ -833,7 +1021,7 @@ export function NewEntryPage() {
     const requiresImages = values.sourceType !== 'link'
 
     if (requiresImages && pendingImages.length === 0) {
-      setSaveErrorMessage('Subi al menos una captura antes de guardar.')
+      setSaveErrorMessage('Subí una captura o un PDF antes de guardar.')
       return
     }
 
@@ -904,23 +1092,40 @@ export function NewEntryPage() {
       navigate(`/entries/${entry.id}`, { replace: true })
     } catch (error) {
       setSaveErrorMessage(
-        getErrorMessage(error, 'No pudimos guardar la entry y sus capturas.'),
+        getErrorMessage(error, 'No pudimos guardar la entry y su material.'),
       )
     } finally {
       setIsSubmitting(false)
     }
   }
 
+  function handleDownloadGeneratedData() {
+    const fileBaseName =
+      sanitizeStorageFileName(formDefaults.title || pendingDocument?.name || 'entry') ||
+      'entry'
+
+    downloadJsonFile(
+      `${fileBaseName}-datos-generados.json`,
+      buildGeneratedEntryExport(formDefaults),
+    )
+  }
+
   const submitDisabledReason =
     formDefaults.sourceType !== 'link' && pendingImages.length === 0
-      ? 'Subi al menos una captura para continuar.'
+      ? 'Subí una captura o un PDF para continuar.'
       : null
   const canSubmitEntry = formDefaults.sourceType === 'link' || pendingImages.length > 0
   const canAnalyzeWithAi = hasSourceReady && analysisRunCount < MAX_INITIAL_AI_ANALYSES
-  const captureProgressLabel = `${pendingImages.length} de ${MAX_ENTRY_CAPTURES} capturas cargadas`
-  const isUploadDisabled = pendingImages.length >= MAX_ENTRY_CAPTURES || isUsingLink
+  const captureProgressLabel = pendingDocument
+    ? `${pendingDocument.renderedPages} de ${pendingDocument.totalPages} paginas PDF listas`
+    : `${pendingImages.length} de ${MAX_ENTRY_CAPTURES} capturas cargadas`
+  const isUploadDisabled = isPreparingPdf || pendingImages.length >= MAX_ENTRY_CAPTURES || isUsingLink
   const uploadCtaLabel =
-    pendingImages.length === 0
+    isPreparingPdf
+      ? 'Preparando PDF'
+      : pendingDocument
+        ? 'PDF cargado'
+        : pendingImages.length === 0
       ? 'Cargar primera captura'
       : pendingImages.length === 1
         ? 'Agregar segunda captura'
@@ -1060,6 +1265,7 @@ export function NewEntryPage() {
 
   function renderCapturePreviewGrid(options: { compact?: boolean; interactive?: boolean } = {}) {
     const { compact = false, interactive = true } = options
+    const itemLabel = pendingDocument ? 'Página' : 'Captura'
 
     if (pendingImages.length === 0) {
       return null
@@ -1071,21 +1277,27 @@ export function NewEntryPage() {
           <article className="capture-preview-card" key={image.id}>
             <img
               src={image.previewUrl}
-              alt={`Captura ${image.position + 1}`}
+              alt={`${itemLabel} ${image.position + 1}`}
               className="capture-preview-card__image"
             />
             <div className="capture-preview-card__shade" />
             <div className="capture-preview-card__content">
-              <span className="capture-preview-card__badge">Captura {image.position + 1}</span>
+              <span className="capture-preview-card__badge">
+                {itemLabel} {image.position + 1}
+              </span>
               <strong>
-                {image.ocrStatus === 'processing' ? 'Generando ficha' : 'Captura cargada'}
+                {image.ocrStatus === 'processing'
+                  ? 'Generando ficha'
+                  : pendingDocument
+                    ? 'Página lista'
+                    : 'Captura cargada'}
               </strong>
             </div>
             {interactive ? (
               <button
                 type="button"
                 className="capture-preview-card__remove"
-                aria-label={`Quitar captura ${image.position + 1}`}
+                aria-label={`Quitar ${itemLabel.toLowerCase()} ${image.position + 1}`}
                 onClick={() => {
                   handleRemoveImage(image.id)
                 }}
@@ -1096,7 +1308,7 @@ export function NewEntryPage() {
           </article>
         ))}
 
-        {interactive && pendingImages.length < MAX_ENTRY_CAPTURES ? (
+        {interactive && !pendingDocument && pendingImages.length < MAX_ENTRY_CAPTURES ? (
           <button
             type="button"
             className="capture-preview-card capture-preview-card--add"
@@ -1132,7 +1344,7 @@ export function NewEntryPage() {
         <div className="instagram-link-guide">
           <article className="instagram-link-action">
             <div className="instagram-link-action__copy">
-              <h3>Subir captura</h3>
+              <h3>Subír captura</h3>
               <p>Saca una captura del post y extraemos el contenido automaticamente.</p>
             </div>
 
@@ -1144,7 +1356,7 @@ export function NewEntryPage() {
                 inputRef.current?.click()
               }}
             >
-              Subir captura
+              Subír captura
             </button>
           </article>
 
@@ -1168,7 +1380,7 @@ export function NewEntryPage() {
           <article className="instagram-link-action">
             <div className="instagram-link-action__copy">
               <h3>Abrir en Instagram</h3>
-              <p>Abre el post en otra pestana para copiar texto o sacar una captura.</p>
+              <p>Abrí el post en otra pestaña para copiar texto o sacar una captura.</p>
             </div>
 
             <a
@@ -1187,7 +1399,7 @@ export function NewEntryPage() {
             <span>Texto del post</span>
             <textarea
               rows={5}
-              placeholder="Pega aqui la descripcion, ingredientes, pasos o cualquier texto del post."
+              placeholder="Pegá acá la descripción, ingredientes, pasos o cualquier texto del post."
               value={instagramPastedText}
               onChange={(event) => {
                 setInstagramPastedText(event.target.value)
@@ -1291,7 +1503,7 @@ export function NewEntryPage() {
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept="image/*,application/pdf"
         multiple
         className="sr-only"
         onChange={handleFilesSelected}
@@ -1326,8 +1538,8 @@ export function NewEntryPage() {
         <div className="new-entry-step-card__header">
           <div className="section-title">
             <span className="eyebrow">Paso 1</span>
-            <h2>Material visual</h2>
-            <p>Subi hasta dos capturas. La preview aparece al instante y queda lista para IA/OCR.</p>
+            <h2>Guardá algo para encontrarlo después</h2>
+            <p>Capturas, PDFs o links.</p>
           </div>
 
           <div className="new-entry-upload-meter" aria-label={captureProgressLabel}>
@@ -1378,7 +1590,7 @@ export function NewEntryPage() {
             {primaryPreviewUrl ? (
               <img
                 src={primaryPreviewUrl}
-                alt="Preview de la primera captura"
+                alt={pendingDocument ? 'Preview de la primera pagina PDF' : 'Preview de la primera captura'}
                 className="new-entry-dropzone__image"
               />
             ) : null}
@@ -1387,30 +1599,42 @@ export function NewEntryPage() {
                 role="button"
                 tabIndex={0}
                 className="new-entry-dropzone__remove"
-                aria-label="Quitar primera captura"
+                aria-label={pendingDocument ? 'Quitar PDF' : 'Quitar primera captura'}
                 onClick={(event) => {
                   event.stopPropagation()
+                  if (pendingDocument) {
+                    handleClearPendingDocument()
+                    return
+                  }
+
                   handleRemoveImage(pendingImages[0].id)
                 }}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault()
                     event.stopPropagation()
+                    if (pendingDocument) {
+                      handleClearPendingDocument()
+                      return
+                    }
+
                     handleRemoveImage(pendingImages[0].id)
                   }
                 }}
               >
-                Quitar captura
+                {pendingDocument ? 'Quitar PDF' : 'Quitar captura'}
               </span>
             ) : null}
             <span className="new-entry-dropzone__overlay" />
             <span className="new-entry-dropzone__content">
               <span className="new-entry-dropzone__icon" aria-hidden="true" />
-              <strong>{uploadCtaLabel}</strong>
+              <strong>Guardá una captura, PDF o link</strong>
               <small>
                 {pendingImages.length > 0
-                  ? 'La captura ya esta cargada. Podes sumar una mas o continuar.'
-                  : 'Arrastra, selecciona o pega una captura desde el portapapeles.'}
+                  ? pendingDocument
+                    ? 'El PDF ya está convertido en páginas temporales. Podes continuar.'
+                    : 'La captura ya está cargada. Podes sumar una más o continuar.'
+                  : 'Arrastra, selecciona o pegá una captura, o elegí un PDF.'}
               </small>
             </span>
           </div>
@@ -1431,7 +1655,12 @@ export function NewEntryPage() {
             <button
               type="button"
               className="button--ghost new-entry-desktop-only"
-              disabled={isPastingImage || pendingImages.length >= MAX_ENTRY_CAPTURES || isUsingLink}
+              disabled={
+                isPastingImage ||
+                pendingImages.length >= MAX_ENTRY_CAPTURES ||
+                isUsingLink ||
+                isUsingPdf
+              }
               onClick={() => {
                 void handlePasteImageFromClipboard()
               }}
@@ -1442,26 +1671,33 @@ export function NewEntryPage() {
         </div>
 
         <p className="muted new-entry-desktop-only">
-          Usa Pegar imagen o Ctrl+V despues de copiar una captura.
+          Usa Pegar imagen o Ctrl+V después de copiar una captura. Los PDF se convierten en páginas temporales; el archivo original no se guarda.
         </p>
 
         <div className="new-entry-link-row">
           <div className="section-title">
-            <h2>O pega un link</h2>
+            <h2>O pegá un link</h2>
           </div>
 
-          <label className="form-field">
-            <span className="sr-only">O pega un link</span>
+          <label className="form-field new-entry-link-input">
             <input
               type="url"
-              placeholder="https://..."
+              placeholder="Pegá un link de Instagram, YouTube, TikTok, receta o artículo..."
               value={linkInput}
               disabled={isUsingImages}
               onChange={(event) => {
-                setLinkInput(event.target.value)
+                handleLinkInputChange(event.target.value)
               }}
             />
           </label>
+
+          <div className="new-entry-source-badges" aria-label="Fuentes compatibles">
+            <span>JPG</span>
+            <span>PNG</span>
+            <span>PDF</span>
+            <span>Instagram</span>
+            <span>YouTube</span>
+          </div>
         </div>
 
         {linkSuccessMessage ? (
@@ -1537,7 +1773,9 @@ export function NewEntryPage() {
               <strong>
                 {hasPreparedLink
                   ? 'Detectando informacion desde el link'
-                  : 'Leyendo la captura con OCR e IA'}
+                  : pendingDocument
+                    ? 'Leyendo el PDF con OCR e IA'
+                    : 'Leyendo la captura con OCR e IA'}
               </strong>
               <p>Cuando termine, pasas directo a una ficha visual con los datos precargados.</p>
             </div>
@@ -1627,8 +1865,12 @@ export function NewEntryPage() {
             {pendingImages.length > 0 ? (
               <div className="new-entry-support-block">
                 <div className="section-title new-entry-support-block__header">
-                  <h3>Capturas cargadas</h3>
-                  <p>Material visual usado por IA/OCR.</p>
+                  <h3>{pendingDocument ? 'Paginas PDF' : 'Capturas cargadas'}</h3>
+                  <p>
+                    {pendingDocument
+                      ? `${pendingDocument.name} convertido para IA/OCR sin guardar el PDF original.`
+                      : 'Material visual usado por IA/OCR.'}
+                  </p>
                 </div>
                 {renderCapturePreviewGrid({ compact: true, interactive: false })}
               </div>
@@ -1669,6 +1911,14 @@ export function NewEntryPage() {
             }}
           >
             Volver
+          </button>
+          <button
+            type="button"
+            className="button--ghost"
+            disabled={!hasGeneratedFormContent(formDefaults)}
+            onClick={handleDownloadGeneratedData}
+          >
+            Descargar datos
           </button>
           <button
             type="submit"

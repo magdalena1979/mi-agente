@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+﻿import { Link } from 'react-router-dom'
 
 import { useAuth } from '@/features/auth/auth-context'
 import { EntriesHomePage } from '@/features/entries/pages/EntriesHomePage'
@@ -6,21 +6,21 @@ import { EntriesHomePage } from '@/features/entries/pages/EntriesHomePage'
 const landingSlides = [
   {
     index: '01',
-    title: 'Tene lo que te gusta organizado',
+    title: 'Tené lo que te gusta organizado',
     description:
-      'Guarda ideas, productos, hallazgos y referencias en un mismo lugar para volver cuando quieras.',
+      'Guardá ideas, productos, hallazgos y referencias en un mismo lugar para volver cuando quieras.',
   },
   {
     index: '02',
-    title: 'Agrega una captura de pantalla o un link de lo que te interese',
+    title: 'Agregá una captura de pantalla, subí un PDF o pegá un link de lo que te interese',
     description:
-      'Captura lo importante en segundos y arma tu archivo personal sin cortar tu flujo.',
+      'Capturá lo importante en segundos y armá tu archivo personal sin cortar tu flujo.',
   },
   {
     index: '03',
     title: 'Encontralo facilmente',
     description:
-      'Recupera lo que guardaste sin perder tiempo, con una vista pensada para volver a lo importante.',
+      'Recuperá lo que guardaste sin perder tiempo, con una vista pensada para volver a lo importante.',
   },
 ]
 
@@ -30,10 +30,10 @@ function LandingPage() {
       <article className="landing-hero">
         <div className="landing-hero__copy">
           <span className="eyebrow landing-hero__eyebrow">Tu archivo personal para volver</span>
-          <h2>Todo lo que queres guardar, mirar y reencontrar despues.</h2>
+          <h2>Todo lo que querés guardar, mirar y reencontrar después.</h2>
           <p>
-            Refind te ayuda a ordenar lo que descubris online para que no quede perdido entre
-            capturas, pestanas y links sueltos.
+            Refind te ayuda a ordenar lo que descubrís online para que no quede perdido entre
+            capturas, pestañas y links sueltos.
           </p>
         </div>
 
@@ -51,7 +51,7 @@ function LandingPage() {
 
         <div className="landing-hero__cta">
           <Link className="button landing-hero__button" to="/auth">
-            Empeza ya
+            Empezá ya
           </Link>
         </div>
       </article>
@@ -67,7 +67,7 @@ export function HomePage() {
       <section className="page">
         <article className="card">
           <h2>Preparando Refind</h2>
-          <p>Estamos revisando tu sesion para mostrarte tu espacio.</p>
+          <p>Estamos revisando tu sesión para mostrarte tu espacio.</p>
         </article>
       </section>
     )

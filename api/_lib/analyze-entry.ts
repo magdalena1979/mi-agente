@@ -1,4 +1,4 @@
-import Groq from 'groq-sdk'
+﻿import Groq from 'groq-sdk'
 import { z } from 'zod'
 
 const MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'
@@ -46,7 +46,7 @@ const SPANISH_MONTHS: Record<string, number> = {
   diciembre: 12,
 }
 
-export class AnalyzeEntryValidationError extends Error {}
+export class AnalyzeEntryVálidationError extends Error {}
 export class AnalyzeEntryUpstreamError extends Error {}
 
 const emptyAiFields = {
@@ -147,10 +147,13 @@ const analyzeEntryServerRequestSchema = z
     ),
     sourceType: z.preprocess(
       (value) =>
-        value === 'link' || value === 'manual' || value === 'screenshot'
+        value === 'link' ||
+        value === 'manual' ||
+        value === 'screenshot' ||
+        value === 'pdf'
           ? value
           : 'screenshot',
-      z.enum(['screenshot', 'manual', 'link']),
+      z.enum(['screenshot', 'manual', 'link', 'pdf']),
     ),
     sourceName: optionalStringSchema,
     sourceUrl: optionalStringSchema,
@@ -176,7 +179,7 @@ type AnalyzeEntryRequest = {
   combinedExtractedText: string
   images: AnalyzeEntryImageInput[]
   ocrTextByImage: AnalyzeEntryOcrInput[]
-  sourceType: 'screenshot' | 'manual' | 'link'
+  sourceType: 'screenshot' | 'manual' | 'link' | 'pdf'
   sourceName: string
   sourceUrl: string
 }
@@ -189,7 +192,7 @@ type AnalyzeEntryPreparedPayload = {
   combinedExtractedText: string
   images: AnalyzeEntryImageForAi[]
   ocrTextByImage: AnalyzeEntryOcrInput[]
-  sourceType: 'screenshot' | 'manual' | 'link'
+  sourceType: 'screenshot' | 'manual' | 'link' | 'pdf'
   sourceName: string
   sourceUrl: string
 }
@@ -218,7 +221,7 @@ function normalizeAnalyzeEntryRequest(payload: unknown) {
   const parsedPayload = analyzeEntryServerRequestSchema.safeParse(payload)
 
   if (!parsedPayload.success) {
-    throw new AnalyzeEntryValidationError('El payload de analisis es invalido.')
+    throw new AnalyzeEntryVálidationError('El payload de análisis es inválido.')
   }
 
   return parsedPayload.data as AnalyzeEntryRequest
@@ -396,14 +399,14 @@ function normalizeAmbiguousEventDate(
   if (!visibleYear && !isoDate) {
     const note =
       expectedWeekday === dateMention.weekday
-        ? `La imagen no muestra ano para ${dateWithoutWeekday}; confirmar el ano antes de guardarlo como fecha completa.`
-        : `La imagen no muestra ano para ${dateWithoutWeekday}; dice ${dateMention.weekday}, pero en ${yearToValidate} cae ${expectedWeekday}. Revisar el ano antes de confirmar.`
+        ? `La imagen no muestra año para ${dateWithoutWeekday}; confirmar el año antes de guardarlo como fecha completa.`
+        : `La imagen no muestra año para ${dateWithoutWeekday}; dice ${dateMention.weekday}, pero en ${yearToValidate} cae ${expectedWeekday}. Revisar el año antes de confirmar.`
 
     return {
       ...result,
       fields: {
         ...result.fields,
-        date: `${dateWithoutWeekday} (ano no visible)`,
+        date: `${dateWithoutWeekday} (año no visible)`,
         note: appendFieldNote(result.fields.note, note),
       },
       confidence: Math.min(result.confidence, 0.72),
@@ -415,13 +418,13 @@ function normalizeAmbiguousEventDate(
   }
 
   const note =
-    `La fecha detectada no se guardo como fecha cerrada porque "${dateMention.raw}" no coincide con el calendario de ${yearToValidate}: cae ${expectedWeekday}.`
+    `La fecha detectada no se guardó como fecha cerrada porque "${dateMention.raw}" no coincide con el calendario de ${yearToValidate}: cae ${expectedWeekday}.`
 
   return {
     ...result,
     fields: {
       ...result.fields,
-      date: `${dateWithoutWeekday} (ano no visible)`,
+      date: `${dateWithoutWeekday} (año no visible)`,
       note: appendFieldNote(result.fields.note, note),
     },
     confidence: Math.min(result.confidence, 0.72),
@@ -674,7 +677,7 @@ async function fetchMetaInstagramOEmbedText(
       [
         providerName ? `Plataforma: ${providerName}` : '',
         authorName ? `Autor: ${authorName}` : '',
-        title ? `Titulo o caption: ${title}` : '',
+        title ? `Título o caption: ${title}` : '',
         html ? `Embed: ${html}` : '',
       ]
         .filter(Boolean)
@@ -713,7 +716,7 @@ function hasUsableLinkSource(payload: AnalyzeEntryRequest) {
   return payload.sourceType === 'link' && payload.sourceUrl.trim().length > 0
 }
 
-function validatePayloadForAi(
+function válidatePayloadForAi(
   payload: AnalyzeEntryRequest,
 ): AnalyzeEntryPreparedPayload {
   const imagesWithData = payload.images.filter(
@@ -725,8 +728,8 @@ function validatePayloadForAi(
     !hasUsableOcrText(payload) &&
     !hasUsableLinkSource(payload)
   ) {
-    throw new AnalyzeEntryValidationError(
-      'Necesitamos un link valido, texto OCR o al menos una captura valida para correr la IA.',
+    throw new AnalyzeEntryVálidationError(
+      'Necesitamos un link válido, texto OCR o al menos una captura válida para correr la IA.',
     )
   }
 
@@ -735,20 +738,20 @@ function validatePayloadForAi(
     const estimatedBytes = estimateDataUrlBytes(image.dataUrl)
 
     if (!mimeType || !SUPPORTED_IMAGE_MIME_TYPES.has(mimeType)) {
-      throw new AnalyzeEntryValidationError(
+      throw new AnalyzeEntryVálidationError(
         `La captura ${index + 1} no tiene un formato compatible para IA.`,
       )
     }
 
     if (!Number.isFinite(estimatedBytes) || estimatedBytes <= 0) {
-      throw new AnalyzeEntryValidationError(
-        `La captura ${index + 1} llego vacia o invalida.`,
+      throw new AnalyzeEntryVálidationError(
+        `La captura ${index + 1} llego vacia o inválida.`,
       )
     }
 
     if (estimatedBytes > 900_000) {
-      throw new AnalyzeEntryValidationError(
-        `La captura ${index + 1} sigue siendo demasiado pesada para analizar. Prueba con una imagen mas simple o recortada.`,
+      throw new AnalyzeEntryVálidationError(
+        `La captura ${index + 1} sigue siendo demasiado pesada para analizar. Prueba con una imagen más simple o recortada.`,
       )
     }
   })
@@ -800,6 +803,7 @@ function buildPrompt(payload: AnalyzeEntryPreparedPayload, linkEvidence: LinkEvi
   const cleanedSourceName = cleanText(payload.sourceName)
   const cleanedSourceUrl = payload.sourceUrl.trim()
   const isLinkSource = payload.sourceType === 'link' && cleanedSourceUrl.length > 0
+  const isPdfSource = payload.sourceType === 'pdf'
   const linkPreview = linkEvidence?.preview ?? null
   const linkReaderText = cleanText(linkEvidence?.readerText ?? '')
   const metaOEmbedText = cleanText(linkEvidence?.metaOEmbedText ?? '')
@@ -825,7 +829,7 @@ function buildPrompt(payload: AnalyzeEntryPreparedPayload, linkEvidence: LinkEvi
     .join('\n\n')
   const ocrInput = {
     text: cleanedCombinedText,
-    source: isLinkSource ? 'link' : 'screenshot',
+    source: isLinkSource ? 'link' : isPdfSource ? 'pdf' : 'screenshot',
     language: 'auto',
   }
   const multiImageContext =
@@ -834,9 +838,13 @@ function buildPrompt(payload: AnalyzeEntryPreparedPayload, linkEvidence: LinkEvi
   return [
     isLinkSource
       ? 'Analyze this link as a single personal entry for a Spanish-language personal catalog app.'
+      : isPdfSource
+        ? 'Analyze these rendered PDF pages as a single personal entry for a Spanish-language personal catalog app.'
       : 'Analyze these screenshots as a single personal entry for a Spanish-language personal catalog app.',
     payload.images.length > 0
-      ? 'Use both the screenshot visuals and the OCR text.'
+      ? isPdfSource
+        ? 'Use both the rendered PDF page images and the OCR text. The original PDF is not available, only these page images.'
+        : 'Use both the screenshot visuals and the OCR text.'
       : isLinkSource
         ? 'The request includes a link without screenshots. Use the URL, the detected platform/source, and any reliable clues from the text. Do not pretend you visited the page if the URL is ambiguous.'
       : 'The request does not include the original screenshot images. Use only the OCR text and do not infer visual UI details that are not supported by the text.',
@@ -850,7 +858,7 @@ function buildPrompt(payload: AnalyzeEntryPreparedPayload, linkEvidence: LinkEvi
       ? 'If multiple screenshots show different items connected by the same festival, award, venue, list, theme, brand, creator, trip, place or collection, make that shared factor the title instead of choosing only one item.'
       : '',
     multiImageContext
-      ? 'If two movie screenshots are tied by Cannes, Festival de Cannes, Cannes Film Festival, official selection, competition, Palme d Or or similar festival context, prefer a collection-style entry titled "Festival de Cannes" or "Peliculas del Festival de Cannes" unless one specific film is clearly the only intended subject.'
+      ? 'If two movie screenshots are tied by Cannes, Festival de Cannes, Cannes Film Festival, official selection, competition, Palme d Or or similar festival context, prefer a collection-style entry titled "Festival de Cannes" or "Películas del Festival de Cannes" unless one specific film is clearly the only intended subject.'
       : '',
     multiImageContext
       ? 'When multiple screenshots show separate movies, books, places or articles under one shared context, set detectedType to "collection" unless the shared context is clearly an event, trip or place.'
@@ -862,9 +870,10 @@ function buildPrompt(payload: AnalyzeEntryPreparedPayload, linkEvidence: LinkEvi
     '- If the screenshot is clearly from Instagram, set sourceName to "Instagram" or "Instagram @username" when the handle is visible.',
     '- Treat the visual UI as evidence, not just OCR text. If you see a profile header, Follow/Seguir button, like/comment/share icons, Instagram-style carousel dots, reels/post layout or an Instagram profile/post composition, identify it as Instagram even if the OCR misses the word Instagram.',
     '- When an Instagram handle is visible in the header, caption or account row, prefer sourceName = "Instagram @handle".',
-    '- If the screenshot is clearly from TikTok, X, Pinterest, Facebook, YouTube, Reddit, WhatsApp or another known platform, reflect that in sourceName.',
+    '- If the screenshot is clearly from TikTok, X, Pinterest, Facebook, YouTube, Reddit, WhatsApp or añother known platform, reflect that in sourceName.',
     '- When a social username or handle is visible and reliable, include it in sourceName.',
     '- If the source is a link, use the URL structure, slug, host and platform hints to infer the item only when reliable. If the URL is too opaque, keep the title and summary conservative and do not invent details.',
+    '- If the source is a PDF, treat the rendered pages as document evidence. Do not mention that it came from screenshots unless the document itself is a screenshot.',
     '- Streaming screenshots from Prime Video, Netflix, Max, Disney+, YouTube or similar are usually movie or series entries.',
     '- If the capture mentions season, episodio, temporada, episode or chapter, prefer series.',
     '- If the capture shows a runtime in minutes and no season/episode cues, prefer movie.',
@@ -882,7 +891,7 @@ function buildPrompt(payload: AnalyzeEntryPreparedPayload, linkEvidence: LinkEvi
     '- For clearly identified books, articles or places, you may also add one short useful contextual note in fields.note when it is reliable and helps the user remember why it matters.',
     '- Do not invent facts. Only enrich when the match is strong and the extra data is likely correct.',
     '- For events, never infer a year from the current date when the screenshot only shows a day and month.',
-    '- For event flyers, read date digits carefully from the image itself. Do not change 23 into 25, 18, 28 or another nearby day to make the calendar fit.',
+    '- For event flyers, read date digits carefully from the image itself. Do not change 23 into 25, 18, 28 or añother nearby day to make the calendar fit.',
     '- For events, when OCR text and the screenshot image disagree about a day number, trust the visible image only if the digits are clear; otherwise keep fields.date conservative and explain the uncertainty in fields.note.',
     '- For events, if the visible text has a weekday plus day/month but no year, keep fields.date as day/month without a weekday or year, and mention the ambiguity in fields.note.',
     '- For events, only output an ISO date like YYYY-MM-DD when the year is visible or reliable from source metadata.',
@@ -898,7 +907,7 @@ function buildPrompt(payload: AnalyzeEntryPreparedPayload, linkEvidence: LinkEvi
     '- Never use the summary just to say that an Instagram user recommended or posted the item. That information belongs in sourceName, not in the core summary.',
     '- If the item is a book and the author is clearly identified, the summary should prioritize describing the book, its premise, tone, theme, or a brief useful context about the writer.',
     '- If the item is a book, prefer 2 or 3 full sentences that leave the user with a better idea of what the book is about or why it may be worth remembering.',
-    '- If the item is a movie or series, summary should ideally mention genero, director, year, plataforma or cultural context when available.',
+    '- If the item is a movie or series, summary should ideally mention género, director, year, plataforma or cultural context when available.',
     '- If the item is an article, place, trip, plant or garden entry, summary should mention the main angle plus one extra helpful detail when reliable.',
     '- If you cannot enrich confidently, still write a helpful paragraph, but do not invent facts.',
     '- tags should be short lowercase strings in Spanish when possible.',
@@ -1036,7 +1045,7 @@ export async function analyzeEntryPayload(
     throw new Error('Falta GROQ_API_KEY para analizar entradas.')
   }
 
-  const payload = validatePayloadForAi(normalizeAnalyzeEntryRequest(rawPayload))
+  const payload = válidatePayloadForAi(normalizeAnalyzeEntryRequest(rawPayload))
   const linkEvidence = hasUsableLinkSource(payload)
     ? await fetchLinkEvidenceWithRuntimeConfig(payload.sourceUrl, runtimeConfig)
     : null
@@ -1089,7 +1098,7 @@ export async function analyzeEntryPayload(
   }
 
   if (typeof content !== 'string') {
-    throw new AnalyzeEntryUpstreamError('La IA no devolvio contenido utilizable.')
+    throw new AnalyzeEntryUpstreamError('La IA no devolvió contenido utilizable.')
   }
 
   let parsedContent: unknown
@@ -1098,7 +1107,7 @@ export async function analyzeEntryPayload(
     parsedContent = JSON.parse(content)
   } catch {
     throw new AnalyzeEntryUpstreamError(
-      'La IA devolvio una respuesta invalida para esta entrada.',
+      'La IA devolvió una respuesta inválida para esta entrada.',
     )
   }
 

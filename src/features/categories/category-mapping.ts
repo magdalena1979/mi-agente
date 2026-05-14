@@ -1,10 +1,10 @@
-import type { CategoryRecord } from '@/types/categories'
+﻿import type { CategoryRecord } from '@/types/categories'
 import type { EntryType } from '@/types/entries'
 
 const entryTypeToDefaultCategoryKey: Partial<Record<EntryType, string>> = {
   article: 'articulos',
   book: 'libros',
-  movie: 'peliculas',
+  movie: 'películas',
   place: 'lugares',
   plant: 'plantas',
   recipe: 'recetas',
@@ -16,7 +16,7 @@ const entryTypeToDefaultCategoryName: Partial<Record<EntryType, string>> = {
   article: 'Articulos',
   book: 'Libros',
   event: 'Eventos',
-  movie: 'Peliculas',
+  movie: 'Películas',
   place: 'Lugares',
   plant: 'Plantas',
   recipe: 'Recetas',

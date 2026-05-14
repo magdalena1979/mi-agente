@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client'
+﻿import { supabase } from '@/integrations/supabase/client'
 import type { EntryImageRecord, PendingUploadImage } from '@/types/entries'
 
 type EntryImageRow = {
@@ -31,7 +31,7 @@ const WEBP_MIME_TYPE = 'image/webp'
 function getClient() {
   if (!supabase) {
     throw new Error(
-      'Supabase no esta configurado. Revisa VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.',
+      'Supabase no está configurado. Revisa VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.',
     )
   }
 
@@ -89,11 +89,11 @@ function getStorageUploadErrorMessage(
   error: { message?: string } | null,
   imagePath: string,
 ) {
-  const message = error?.message ?? 'No pudimos subir la imagen al bucket.'
+  const message = error?.message ?? 'No pudimos subír la imagen al bucket.'
 
   if (message.toLowerCase().includes('row-level security policy')) {
     return [
-      'Supabase Storage rechazo la subida por politicas de acceso.',
+      'Supabase Storage rechazo la subída por politicas de acceso.',
       'Aplica la migracion de storage/RLS y volve a intentar.',
       `Ruta intentada: ${imagePath}`,
     ].join(' ')

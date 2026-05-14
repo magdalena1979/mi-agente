@@ -1,4 +1,4 @@
-export type CategoryRecord = {
+﻿export type CategoryRecord = {
   id: string
   name: string
   normalizedName: string
@@ -25,6 +25,6 @@ export const DEFAULT_USER_CATEGORY_NAMES = [
   'Pendientes',
   'Recetas',
   'Libros',
-  'Peliculas',
+  'Películas',
   'Series',
 ] as const

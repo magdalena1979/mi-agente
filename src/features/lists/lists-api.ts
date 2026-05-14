@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client'
+﻿import { supabase } from '@/integrations/supabase/client'
 import { createClientUuid } from '@/lib/random-id'
 import type {
   InvitationLookupRecord,
@@ -66,7 +66,7 @@ const LIST_SELECT = `
 function getClient() {
   if (!supabase) {
     throw new Error(
-      'Supabase no esta configurado. Revisa VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.',
+      'Supabase no está configurado. Revisa VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.',
     )
   }
 
@@ -245,7 +245,7 @@ export async function createInvitation(input: {
   }
 
   if (existingInvitation) {
-    throw new Error('Ya existe una invitacion pendiente para ese email.')
+    throw new Error('Ya existe una invitación pendiente para ese email.')
   }
 
   const { data, error } = await client
@@ -289,7 +289,7 @@ export async function createEntriesShareInvitation(input: {
   }
 
   if (existingInvitation) {
-    throw new Error('Ya existe una invitacion pendiente para ese email.')
+    throw new Error('Ya existe una invitación pendiente para ese email.')
   }
 
   const { data, error } = await client
@@ -424,7 +424,7 @@ export async function acceptInvitation(input: {
     }
   } else {
     if (!input.invitation.invitedBy) {
-      throw new Error('La invitacion no tiene un remitente valido.')
+      throw new Error('La invitación no tiene un remitente válido.')
     }
 
     const { data: existingShare, error: existingShareError } = await client

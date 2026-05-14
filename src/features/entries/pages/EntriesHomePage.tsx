@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import {
@@ -74,6 +74,10 @@ function getRowMeta(entry: EntryRecord) {
     return entry.sourceName
       ? `${entry.sourceName} - ${entry.sourceUrl}`
       : entry.sourceUrl
+  }
+
+  if (entry.sourceType === 'pdf') {
+    return entry.sourceName ?? 'PDF'
   }
 
   if (entry.type === 'movie' || entry.type === 'series') {
@@ -585,7 +589,7 @@ export function EntriesHomePage() {
 
   const totalPages = Math.max(1, Math.ceil(filteredEntries.length / PAGE_SIZE))
   const safeCurrentPage = Math.min(currentPage, totalPages)
-  const paginatedEntries = useMemo(() => {
+  const páginatedEntries = useMemo(() => {
     const startIndex = (safeCurrentPage - 1) * PAGE_SIZE
     return filteredEntries.slice(startIndex, startIndex + PAGE_SIZE)
   }, [filteredEntries, safeCurrentPage])
@@ -757,7 +761,7 @@ export function EntriesHomePage() {
   //   const actionLabel =
   //     invitation.status === 'accepted'
   //       ? `dejar de compartir con ${invitation.email}`
-  //       : `cancelar la invitacion para ${invitation.email}`
+  //       : `cancelar la invitación para ${invitation.email}`
   //
   //   const confirmed = window.confirm(
   //     `Vas a ${actionLabel}. Esta accion no elimina la cuenta de la otra persona.`,
@@ -1011,7 +1015,7 @@ export function EntriesHomePage() {
         <div className="library-header__main">
           <div className="section-title library-header__copy">
             <h1>Biblioteca</h1>
-            <p>Tus capturas, links y recomendaciones en una lista clara y facil de explorar.</p>
+            <p>Tus capturas, links y recomendaciones en una lista clara y fácil de explorar.</p>
           </div>
 
           {/* Compartido desactivado temporalmente en el frontend.
@@ -1114,7 +1118,7 @@ export function EntriesHomePage() {
               <input
                 type="search"
                 value={searchQuery}
-                placeholder="Buscar por titulo, autor, genero o plataforma"
+                placeholder="Buscar por título, autor, género o plataforma"
                 onChange={(event) => {
                   setSearchQuery(event.target.value)
                   setCurrentPage(1)
@@ -1280,7 +1284,7 @@ export function EntriesHomePage() {
               }}
             >
               <span>Ordenar:</span>
-              <strong>{sortOrder === 'recent' ? 'Mas recientes' : 'Mas antiguas'}</strong>
+              <strong>{sortOrder === 'recent' ? 'Más recientes' : 'Más antiguas'}</strong>
               <span aria-hidden="true">v</span>
             </button>
           </section>
@@ -1292,10 +1296,10 @@ export function EntriesHomePage() {
             </article>
           ) : entries.length === 0 ? (
             <article className="card card--flat empty-state">
-              <h2>Todavia no guardaste nada</h2>
+              <h2>Todavía no guardaste nada</h2>
               <p>
-                Empeza con una captura. La idea es que no tengas que mandarte cosas a
-                WhatsApp para recordarlas despues.
+                Empezá con una captura. La idea es que no tengas que mandarte cosas a
+                WhatsApp para recordarlas después.
               </p>
               <Link className="button" to="/entries/new">
                 Subir primera captura
@@ -1311,13 +1315,13 @@ export function EntriesHomePage() {
               <div className="library-table__head" aria-hidden="true">
                 <span>Item</span>
                 <span>Tags</span>
-                <span>Subio</span>
+                <span>Subío</span>
                 <span>Actualizado</span>
                 <span>Acciones</span>
               </div>
 
               <div className="library-table__body">
-                {paginatedEntries.map((entry) => {
+                {páginatedEntries.map((entry) => {
                   const rowMeta = getRowMeta(entry)
                   const uploaderLabel = getUploaderLabel(entry, user?.id)
                   const isChecked = entryMarksById[entry.id]?.isChecked ?? false
@@ -1449,7 +1453,7 @@ export function EntriesHomePage() {
                           </div>
 
                           <h2>{entry.title}</h2>
-                          <p>{entry.summary || rowMeta || 'Sin descripcion todavia.'}</p>
+                          <p>{entry.summary || rowMeta || 'Sin descripción todavía.'}</p>
 
                           <div className="library-row__details">
                             <span>{formatDate(entry.updatedAt)}</span>
@@ -1525,7 +1529,7 @@ export function EntriesHomePage() {
               </div>
 
               {totalPages > 1 ? (
-                <div className="pagination" aria-label="Paginacion de entradas">
+                <div className="págination" aria-label="Páginacion de entradas">
                   <button
                     type="button"
                     className="button--ghost"
@@ -1537,8 +1541,8 @@ export function EntriesHomePage() {
                     Anterior
                   </button>
 
-                  <span className="pagination__status">
-                    Pagina {safeCurrentPage} de {totalPages} - {filteredEntries.length} entradas
+                  <span className="págination__status">
+                    Página {safeCurrentPage} de {totalPages} - {filteredEntries.length} entradas
                   </span>
 
                   <button

@@ -121,7 +121,7 @@ Incluye:
 ### Decisiones de esquema
 
 - `metadata_json` concentra los campos variables por tipo y evita sobredimensionar la primera versión.
-- `ai_tags` se guarda como `text[]` para simplificar filtros iniciales.
+- `ai_tags` se guardácomo `text[]` para simplificar filtros iniciales.
 - `entry_items` queda creada pero no será requisito del primer flujo funcional.
 - `source_type` y `status` permiten crecer más adelante sin romper el modelo base.
 

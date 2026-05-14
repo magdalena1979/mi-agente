@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { useAuth } from '@/features/auth/auth-context'
@@ -131,7 +131,7 @@ export function NotificationsBell() {
                   <strong>{getEntryNotificationLabel(notification)}</strong>
                   <span>
                     {notification.actorLabel
-                      ? `${notification.actorLabel} subio algo nuevo`
+                      ? `${notification.actorLabel} subío algo nuevo`
                       : 'Hay una entrada nueva compartida'}
                   </span>
                 </div>

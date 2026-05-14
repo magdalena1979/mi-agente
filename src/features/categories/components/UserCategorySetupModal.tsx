@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 
 type UserCategorySetupModalProps = {
   isOpen: boolean
@@ -49,7 +49,7 @@ export function UserCategorySetupModal({
         <div className="section-title">
           <h2 id="user-category-setup-title">Tus tags</h2>
           <p>
-            Elegi algunos tags iniciales. Refind tambien puede crear nuevos automaticamente cuando genera una ficha.
+            Elegí algunos tags iniciales. Refind también puede crear nuevos automáticamente cuando genera una ficha.
           </p>
         </div>
 

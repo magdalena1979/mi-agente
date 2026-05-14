@@ -1,4 +1,4 @@
-import type { User } from '@supabase/supabase-js'
+﻿import type { User } from '@supabase/supabase-js'
 
 import { supabase } from '@/integrations/supabase/client'
 
@@ -7,7 +7,7 @@ const CATEGORY_SETUP_MODAL_METADATA_KEY = 'has_seen_category_setup_modal'
 function getClient() {
   if (!supabase) {
     throw new Error(
-      'Supabase no esta configurado. Revisa VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.',
+      'Supabase no está configurado. Revisa VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.',
     )
   }
 

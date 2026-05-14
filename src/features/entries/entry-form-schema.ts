@@ -1,4 +1,4 @@
-import { z } from 'zod'
+﻿import { z } from 'zod'
 
 import {
   filterMetadataByType,
@@ -20,7 +20,12 @@ export const entryStatusOptions: EntryStatus[] = [
   'reviewed',
 ]
 
-export const entrySourceOptions: EntrySourceType[] = ['screenshot', 'manual', 'link']
+export const entrySourceOptions: EntrySourceType[] = [
+  'screenshot',
+  'manual',
+  'link',
+  'pdf',
+]
 
 const metadataShape = ENTRY_FIELD_KEYS.reduce<
   Record<EntryFieldKey, z.ZodString>
@@ -31,9 +36,9 @@ const metadataShape = ENTRY_FIELD_KEYS.reduce<
 
 export const entryFormSchema = z.object({
   type: z.enum(ENTRY_TYPES),
-  title: z.string().trim().min(1, 'El titulo es obligatorio.'),
+  title: z.string().trim().min(1, 'El título es obligatorio.'),
   summary: z.string().trim(),
-  sourceType: z.enum(['screenshot', 'manual', 'link']),
+  sourceType: z.enum(['screenshot', 'manual', 'link', 'pdf']),
   sourceName: z.string().trim(),
   sourceUrl: z.string().trim(),
   status: z.enum(['draft', 'reviewed']),

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { analyzeEntry } from '@/features/ai/analyze-entry'
@@ -40,10 +40,14 @@ const entryTypeLabelMap = entryTypeOptions.reduce<Record<EntryType, string>>(
   {} as Record<EntryType, string>,
 )
 
+const MAX_ENTRY_CAPTURES = 2
+
 function formatSourceTypeLabel(sourceType: EntryRecord['sourceType']) {
   switch (sourceType) {
     case 'link':
       return 'Link'
+    case 'pdf':
+      return 'PDF'
     case 'manual':
       return 'Manual'
     default:
@@ -96,6 +100,113 @@ function getStorageFileName(imagePath: string, fallback: string) {
   return rawName.replace(/^\d+-/, '')
 }
 
+function sanitizeFileName(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase()
+    .slice(0, 72)
+}
+
+function escapePdfText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x20-\x7E]/g, '')
+    .replace(/\\/g, '\\\\')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)')
+}
+
+function wrapPdfText(value: string, maxLength = 78) {
+  const words = value.replace(/\s+/g, ' ').trim().split(' ')
+  const lines: string[] = []
+  let currentLine = ''
+
+  for (const word of words) {
+    const nextLine = currentLine ? `${currentLine} ${word}` : word
+
+    if (nextLine.length > maxLength && currentLine) {
+      lines.push(currentLine)
+      currentLine = word
+    } else {
+      currentLine = nextLine
+    }
+  }
+
+  if (currentLine) {
+    lines.push(currentLine)
+  }
+
+  return lines
+}
+
+function buildEntryPdf(entry: EntryRecord, facts: Array<{ label: string; value: string; href?: string }>) {
+  const rows = [
+    entry.title,
+    '',
+    entry.summary,
+    '',
+    `Tipo: ${entryTypeLabelMap[entry.type]}`,
+    `Origen: ${formatSourceTypeLabel(entry.sourceType)}`,
+    entry.sourceName ? `Fuente: ${entry.sourceName}` : '',
+    `Actualizado: ${formatDate(entry.updatedAt)}`,
+    entry.aiTags.length > 0 ? `Tags: ${entry.aiTags.join(', ')}` : '',
+    '',
+    ...facts.map((fact) => `${fact.label}: ${fact.value}`),
+  ].filter(Boolean)
+  const lines = rows.flatMap((row) => (row ? wrapPdfText(row) : ['']))
+  const contentLines = [
+    'BT',
+    '/F1 20 Tf',
+    '48 780 Td',
+    `(${escapePdfText('Refind')}) Tj`,
+    '0 -32 Td',
+    '/F1 12 Tf',
+    ...lines.slice(0, 44).flatMap((line, index) => [
+      index === 0 ? '/F1 18 Tf' : index === 1 ? '/F1 12 Tf' : '',
+      `(${escapePdfText(line)}) Tj`,
+      '0 -18 Td',
+    ]).filter(Boolean),
+    'ET',
+  ]
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    `<< /Length ${contentLines.join('\n').length} >>\nstream\n${contentLines.join('\n')}\nendstream`,
+  ]
+  const parts = ['%PDF-1.4\n']
+  const offsets: number[] = []
+
+  objects.forEach((object, index) => {
+    offsets.push(parts.join('').length)
+    parts.push(`${index + 1} 0 obj\n${object}\nendobj\n`)
+  })
+
+  const xrefOffset = parts.join('').length
+  parts.push(`xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`)
+  offsets.forEach((offset) => {
+    parts.push(`${String(offset).padStart(10, '0')} 00000 n \n`)
+  })
+  parts.push(`trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`)
+
+  return new Blob([parts.join('')], { type: 'application/pdf' })
+}
+
+function downloadBlob(fileName: string, blob: Blob) {
+  const objectUrl = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+
+  link.href = objectUrl
+  link.download = fileName
+  link.click()
+  URL.revokeObjectURL(objectUrl)
+}
+
 function getHeroHighlights(entry: EntryRecord) {
   const highlights: Array<{ label: string; value: string }> = []
 
@@ -116,15 +227,15 @@ function getHeroHighlights(entry: EntryRecord) {
     case 'series':
       pushIfPresent('Director', entry.metadata.director)
       pushIfPresent('Plataforma', entry.metadata.platform)
-      pushIfPresent('Genero', entry.metadata.genre)
-      pushIfPresent('Ano', entry.metadata.year)
-      pushIfPresent('Duracion', entry.metadata.duration)
+      pushIfPresent('Género', entry.metadata.genre)
+      pushIfPresent('Año', entry.metadata.year)
+      pushIfPresent('Duración', entry.metadata.duration)
       pushIfPresent('Reparto', entry.metadata.cast)
       break
     case 'book':
       pushIfPresent('Autor', entry.metadata.author)
-      pushIfPresent('Genero', entry.metadata.genre)
-      pushIfPresent('Ano', entry.metadata.year)
+      pushIfPresent('Género', entry.metadata.genre)
+      pushIfPresent('Año', entry.metadata.year)
       break
     case 'event':
       pushIfPresent('Fecha', entry.metadata.date)
@@ -187,6 +298,41 @@ function BackLink() {
         <span>Volver</span>
       </Link>
     </div>
+  )
+}
+
+function CapturePreviewCard({ image }: { image: EntryImageRecord }) {
+  return (
+    <details className="capture-card capture-card--preview">
+      <summary className="capture-card__summary">
+        {image.imageUrl ? (
+          <img
+            src={image.imageUrl}
+            alt=""
+            className="capture-card__thumb"
+          />
+        ) : (
+          <div className="capture-card__thumb capture-card__thumb--placeholder" />
+        )}
+
+        <span className="capture-card__summary-copy">
+          <strong>Captura {image.position + 1}</strong>
+          <small>{image.ocrText ? 'OCR disponible' : 'Sin texto detectado'}</small>
+        </span>
+
+        <span className="capture-card__expand-label">Ver</span>
+      </summary>
+
+      {image.imageUrl ? (
+        <img
+          src={image.imageUrl}
+          alt={`Captura ${image.position + 1}`}
+          className="capture-card__image capture-card__image--expanded"
+        />
+      ) : (
+        <div className="capture-card__placeholder">Sin preview</div>
+      )}
+    </details>
   )
 }
 
@@ -268,6 +414,17 @@ export function EntryDetailPage() {
   const totalAiAnalysisCount = entry ? getTotalAiAnalysisCount(entry) : 0
   const canEditEntry = Boolean(entry)
   const canReanalyze = Boolean(entry && totalAiAnalysisCount < 2)
+  const canAddCaptures = canReanalyze && entryImages.length < MAX_ENTRY_CAPTURES
+
+  function handleDownloadPdf() {
+    if (!entry) {
+      return
+    }
+
+    const pdf = buildEntryPdf(entry, [...detailFacts, ...heroSupportFacts])
+    const fileName = `${sanitizeFileName(entry.title) || 'refind-entry'}.pdf`
+    downloadBlob(fileName, pdf)
+  }
 
   async function createAnalysisImageFromSavedCapture(image: EntryImageRecord) {
     if (!image.imageUrl) {
@@ -382,7 +539,7 @@ export function EntryDetailPage() {
     if (!user || !entry) return
 
     const confirmed = window.confirm(
-      `Vas a borrar "${entry.title}". Esta accion no se puede deshacer.`,
+      `Vas a borrar "${entry.title}". Esta acción no se puede deshacer.`,
     )
 
     if (!confirmed) return
@@ -414,7 +571,7 @@ export function EntryDetailPage() {
 
     if (getTotalAiAnalysisCount(entry) >= 2) {
       setErrorMessage(
-        'Esta entry ya alcanzo el limite de 2 analisis con IA.',
+        'Esta entry ya alcanzó el límite de 2 análisis con IA.',
       )
       return
     }
@@ -446,6 +603,9 @@ export function EntryDetailPage() {
         combinedExtractedText,
         images,
         ocrTextByImage,
+        sourceType: entry.sourceType,
+        sourceName: entry.sourceName ?? '',
+        sourceUrl: entry.sourceUrl ?? '',
       })
       const nextAiRefreshCount = getAiRefreshCount(entry) + 1
 
@@ -472,7 +632,7 @@ export function EntryDetailPage() {
       })
 
       setEntry(updatedEntry)
-      setSuccessMessage('La IA actualizo el contenido de esta entry.')
+      setSuccessMessage('La IA actualizó el contenido de esta entry.')
     } catch (error) {
       setErrorMessage(
         error instanceof Error
@@ -497,8 +657,14 @@ export function EntryDetailPage() {
 
     if (!canReanalyze) {
       setErrorMessage(
-        'Solo puedes agregar mas capturas mientras tengas IA disponible.',
+        'Solo puedes agregár más capturas mientras tengas IA disponible.',
       )
+      event.target.value = ''
+      return
+    }
+
+    if (entryImages.length >= MAX_ENTRY_CAPTURES) {
+      setErrorMessage('Cada entry puede tener como máximo 2 capturas.')
       event.target.value = ''
       return
     }
@@ -512,8 +678,15 @@ export function EntryDetailPage() {
         entryImages.map((image) => createPendingUploadImageFromSavedCapture(image)),
       )
 
+      const availableSlots = MAX_ENTRY_CAPTURES - existingImages.length
+      const filesToAdd = selectedFiles.slice(0, availableSlots)
+
+      if (filesToAdd.length < selectedFiles.length) {
+        setErrorMessage('Solo podés guardar hasta 2 capturas por entry.')
+      }
+
       const newImages = await Promise.all(
-        selectedFiles.map(async (file, index) => {
+        filesToAdd.map(async (file, index) => {
           const ocrText = await extractTextFromImage(file).catch(() => '')
 
           return {
@@ -564,7 +737,7 @@ export function EntryDetailPage() {
       setErrorMessage(
         error instanceof Error
           ? error.message
-          : 'No pudimos agregar las nuevas capturas.',
+          : 'No pudimos agregár las nuevas capturas.',
       )
     } finally {
       setIsUploadingCaptures(false)
@@ -579,7 +752,7 @@ export function EntryDetailPage() {
 
         <article className="card">
           <h2>Cargando entry</h2>
-          <p>Estamos trayendo la informacion desde Supabase.</p>
+          <p>Estamos trayendo la información desde Supabase.</p>
         </article>
       </section>
     )
@@ -604,8 +777,8 @@ export function EntryDetailPage() {
   }
 
   return (
-    <section className="page page--detail">
-      <BackLink />
+    <section className={isEditing ? 'page page--detail page--detail--editing' : 'page page--detail'}>
+      {!isEditing ? <BackLink /> : null}
 
       {isEditing ? (
         <div className="detail-edit-bar">
@@ -635,7 +808,8 @@ export function EntryDetailPage() {
         </div>
       ) : null}
 
-      <article className="detail-hero">
+      {!isEditing ? (
+        <article className="detail-hero">
         <div className="detail-hero__content">
           <div className="detail-hero__toprow">
             <div className="detail-hero__eyebrow">
@@ -647,54 +821,61 @@ export function EntryDetailPage() {
             </div>
 
             <div className="detail-hero__top-actions">
+              <button
+                type="button"
+                className="button--ghost button--icon-only detail-hero__download-button"
+                aria-label="Descargar ficha en PDF"
+                title="Descargar ficha en PDF"
+                onClick={() => {
+                  handleDownloadPdf()
+                }}
+              >
+                <svg aria-hidden="true" viewBox="0 0 24 24" className="action-icon">
+                  <path
+                    d="M12 3v11m0 0 4-4m-4 4-4-4M5 19h14"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.8"
+                  />
+                </svg>
+              </button>
+
               {canEditEntry ? (
-                isEditing ? (
-                  <button
-                    type="button"
-                    className="button--ghost"
-                    onClick={() => {
-                      setIsEditing(false)
-                      setErrorMessage(null)
-                      setSuccessMessage(null)
-                    }}
+                <button
+                  type="button"
+                  className="button--ghost button--icon-only detail-hero__edit-button"
+                  aria-label="Editar entrada"
+                  title="Editar entrada"
+                  onClick={() => {
+                    setIsEditing(true)
+                    setErrorMessage(null)
+                    setSuccessMessage(null)
+                  }}
+                >
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    className="action-icon"
                   >
-                    Cancelar
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="button--ghost button--icon-only detail-hero__edit-button"
-                    aria-label="Editar entrada"
-                    title="Editar entrada"
-                    onClick={() => {
-                      setIsEditing(true)
-                      setErrorMessage(null)
-                      setSuccessMessage(null)
-                    }}
-                  >
-                    <svg
-                      aria-hidden="true"
-                      viewBox="0 0 24 24"
-                      className="action-icon"
-                    >
-                      <path
-                        d="M4 20h4l10-10a2.12 2.12 0 0 0-3-3L5 17v3Zm9-11 3 3"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.8"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
-                )
+                    <path
+                      d="M4 20h4l10-10a2.12 2.12 0 0 0-3-3L5 17v3Zm9-11 3 3"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
               ) : null}
             </div>
           </div>
 
           <h1>{entry.title}</h1>
           <p className="detail-hero__summary">
-            {entry.summary || 'Todavia no agregaste un resumen para este item.'}
+            {entry.summary || 'Todavía no agregáste un resumen para este item.'}
           </p>
 
           {detailFacts.length > 0 ? (
@@ -738,27 +919,6 @@ export function EntryDetailPage() {
             </div>
           ) : null}
 
-          {canReanalyze ? (
-            <div className="detail-hero__inline-actions detail-hero__inline-actions--bottom">
-              <button
-                type="button"
-                className="button"
-                disabled={!canReanalyze || isReanalyzing || isSubmitting || isDeleting}
-                onClick={() => {
-                  void handleReanalyze()
-                }}
-              >
-                {isReanalyzing
-                  ? 'Actualizando con IA...'
-                  : canReanalyze
-                    ? 'Volver a analizar con IA'
-                    : 'Limite de IA alcanzado'}
-              </button>
-              <span className="muted">
-                {totalAiAnalysisCount}/2 analisis usados -solo tenes 2 chances por el momento-
-              </span>
-            </div>
-          ) : null}
         </div>
 
         {entryImages[0]?.imageUrl ? (
@@ -771,7 +931,18 @@ export function EntryDetailPage() {
           </div>
         ) : null}
 
-      </article>
+        </article>
+      ) : (
+        <article className="detail-edit-context">
+          <span className="entry-card__type">
+            {entryTypeLabelMap[entry.type]}
+          </span>
+          <div>
+            <h1>{entry.title}</h1>
+            <p>Estás editando la metadata de esta entrada.</p>
+          </div>
+        </article>
+      )}
 
       {!isEditing && errorMessage ? (
         <p className="feedback feedback--error">{errorMessage}</p>
@@ -781,10 +952,10 @@ export function EntryDetailPage() {
       ) : null}
 
       {isEditing ? (
-      <article className="card">
+      <article className="card detail-edit-card">
         <div className="section-title">
           <h2>Editar entrada</h2>
-          <p>Ajusta los datos y guarda cuando este listo.</p>
+          <p>Ajustá los datos y guardá cuando esté listo.</p>
         </div>
 
         <EntryForm
@@ -801,17 +972,36 @@ export function EntryDetailPage() {
           onSubmit={handleUpdate}
           onDelete={handleDelete}
           highlightEditableFields
+          collapseSecondarySections
         />
+
+        {canReanalyze ? (
+          <div className="detail-edit-tools">
+            <button
+              type="button"
+              className="button--ghost detail-ai-action"
+              disabled={isReanalyzing || isSubmitting || isDeleting}
+              onClick={() => {
+                void handleReanalyze()
+              }}
+            >
+              {isReanalyzing ? 'Actualizando con IA...' : 'Volver a analizar con IA'}
+            </button>
+            <span className="muted">
+              {totalAiAnalysisCount}/2 análisis usados
+            </span>
+          </div>
+        ) : null}
       </article>
       ) : null}
 
-      <article className="card">
+      <article className="card detail-captures-card">
         <div className="section-title">
           <h2>Capturas asociadas</h2>
-          <p>Todas las imagenes que quedaron guardadas para esta entrada.</p>
+          <p>Todas las imágenes que quedaron guardadas para esta entrada.</p>
         </div>
 
-        {canReanalyze ? (
+        {isEditing && canAddCaptures ? (
           <div className="entry-form__actions">
             <input
               ref={uploadInputRef}
@@ -831,30 +1021,17 @@ export function EntryDetailPage() {
                 uploadInputRef.current?.click()
               }}
             >
-              {isUploadingCaptures ? 'Agregando capturas...' : 'Agregar mas capturas'}
+              {isUploadingCaptures ? 'Agregando capturas...' : 'Agregar más capturas'}
             </button>
           </div>
         ) : null}
 
         {entryImages.length === 0 ? (
-          <p className="muted">Esta entry todavia no tiene capturas asociadas.</p>
+          <p className="muted">Esta entry todavía no tiene capturas asociadas.</p>
         ) : (
           <div className="capture-grid">
             {entryImages.map((image) => (
-              <article key={image.id} className="capture-card">
-                {image.imageUrl ? (
-                  <img
-                    src={image.imageUrl}
-                    alt={`Captura ${image.position + 1}`}
-                    className="capture-card__image"
-                  />
-                ) : (
-                  <div className="capture-card__placeholder">Sin preview</div>
-                )}
-                <div className="capture-card__content">
-                  <strong>Captura {image.position + 1}</strong>
-                </div>
-              </article>
+              <CapturePreviewCard key={image.id} image={image} />
             ))}
           </div>
         )}

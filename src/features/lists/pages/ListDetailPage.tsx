@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { useAuth } from '@/features/auth/auth-context'
@@ -169,8 +169,8 @@ export function ListDetailPage() {
 
           <h1>{list.name}</h1>
           <p>
-            {entries.length} entradas guardadas en esta lista. Usa el boton de
-            abajo para agregar nuevas capturas o compartir la lista.
+            {entries.length} entradas guardadas en esta lista. Usa el botón de
+            abajo para agregár nuevas capturas o compartir la lista.
           </p>
         </div>
 
@@ -196,11 +196,11 @@ export function ListDetailPage() {
           <article className="card">
             <div className="section-title">
               <h2>Entradas</h2>
-              <p>Todo lo que esta compartido dentro de esta lista.</p>
+              <p>Todo lo que está compartido dentro de esta lista.</p>
             </div>
 
             {entries.length === 0 ? (
-              <p className="muted">Todavia no hay entradas en esta lista.</p>
+              <p className="muted">Todavía no hay entradas en esta lista.</p>
             ) : (
               <div className="library-table__body">
                 {entries.map((entry) => (
@@ -217,7 +217,7 @@ export function ListDetailPage() {
                         <p>
                           {entry.summary ||
                             getEntrySecondaryMeta(entry) ||
-                            'Sin descripcion todavia.'}
+                            'Sin descripción todavía.'}
                         </p>
 
                         <div className="library-row__details">
@@ -258,7 +258,7 @@ export function ListDetailPage() {
             {list.pendingInvitations.length > 0 ? (
               <>
                 <div className="section-title">
-                  <h2>Invitaciones pendientes</h2>
+                  <h2>Invitaciónes pendientes</h2>
                 </div>
                 <div className="detail-facts">
                   {list.pendingInvitations.map((invitation) => (

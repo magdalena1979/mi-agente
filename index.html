@@ -10,12 +10,42 @@
       name="description"
       content="Mi Agente: PWA para guardar publicaciones, flyers y recuerdos personales desde capturas de pantalla."
     />
-    <meta name="theme-color" content="#14171B" />
+    <meta name="theme-color" content="#09090B" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Refind" />
     <title>Refind</title>
+    <script>
+      (() => {
+        const storageKey = 'refind-theme-preference'
+        const validPreferences = new Set(['light', 'dark', 'system'])
+
+        try {
+          const storedPreference = window.localStorage.getItem(storageKey)
+          const preference = validPreferences.has(storedPreference) ? storedPreference : 'system'
+          const resolvedTheme =
+            preference === 'system'
+              ? window.matchMedia('(prefers-color-scheme: light)').matches
+                ? 'light'
+                : 'dark'
+              : preference
+
+          document.documentElement.dataset.theme = resolvedTheme
+          document.documentElement.dataset.themePreference = preference
+          document.documentElement.style.colorScheme = resolvedTheme
+
+          const metaThemeColor = document.querySelector('meta[name="theme-color"]')
+          if (metaThemeColor) {
+            metaThemeColor.setAttribute('content', resolvedTheme === 'light' ? '#F6F6F7' : '#09090B')
+          }
+        } catch {
+          document.documentElement.dataset.theme = 'dark'
+          document.documentElement.dataset.themePreference = 'system'
+          document.documentElement.style.colorScheme = 'dark'
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

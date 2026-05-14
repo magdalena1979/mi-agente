@@ -34,7 +34,7 @@ export const ENTRY_FIELD_KEYS = [
 export type EntryFieldKey = (typeof ENTRY_FIELD_KEYS)[number]
 
 export type EntryStatus = 'draft' | 'reviewed' | 'archived'
-export type EntrySourceType = 'screenshot' | 'manual' | 'link'
+export type EntrySourceType = 'screenshot' | 'manual' | 'link' | 'pdf'
 export type PendingUploadOcrStatus = 'idle' | 'processing' | 'success' | 'error'
 
 export type EntryMetadataSystemKey = 'aiAnalysisCount' | 'aiRefreshCount'

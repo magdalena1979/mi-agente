@@ -1,9 +1,9 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+﻿import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 import { env } from '@/lib/env'
 
 export const supabase: SupabaseClient | null = env.isSupabaseConfigured
-  ? createClient(env.supabaseUrl, env.supabaseAnonKey, {
+  ? createClient(env.supabaseUrl, env.supabaseAñonKey, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,

@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client'
+﻿import { supabase } from '@/integrations/supabase/client'
 import type {
   EntryNotificationRecord,
   EntryUserMarkRecord,
@@ -37,7 +37,7 @@ type InvitationRow = {
 function getClient() {
   if (!supabase) {
     throw new Error(
-      'Supabase no esta configurado. Revisa VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.',
+      'Supabase no está configurado. Revisa VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.',
     )
   }
 

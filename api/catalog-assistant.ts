@@ -1,9 +1,9 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node'
+﻿import type { VercelRequest, VercelResponse } from '@vercel/node'
 
 import {
   answerCatalogAssistant,
   CatalogAssistantUpstreamError,
-  CatalogAssistantValidationError,
+  CatalogAssistantVálidationError,
 } from './_lib/catalog-assistant.js'
 
 function getRequestBody(req: VercelRequest) {
@@ -15,7 +15,7 @@ function getRequestBody(req: VercelRequest) {
 }
 
 function getErrorStatus(error: unknown) {
-  if (error instanceof CatalogAssistantValidationError) {
+  if (error instanceof CatalogAssistantVálidationError) {
     return 400
   }
 

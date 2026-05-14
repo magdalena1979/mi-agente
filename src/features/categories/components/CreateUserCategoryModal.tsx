@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 
 type CreateUserCategoryModalProps = {
   isOpen: boolean
@@ -55,7 +55,7 @@ export function CreateUserCategoryModal({
             <span>Nombre</span>
             <input
               type="text"
-              placeholder="Ej. astrologia, diabetes, ideas para casa"
+              placeholder="Ej. astrología, diabetes, ideas para casa"
               value={name}
               onChange={(event) => {
                 setName(event.target.value)

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { useAuth } from '@/features/auth/auth-context'
@@ -37,7 +37,7 @@ export function ResetPasswordPage() {
 
     try {
       await updatePassword(password)
-      setSuccessMessage('Tu contraseña se actualizo correctamente.')
+      setSuccessMessage('Tu contraseña se actualizó correctamente.')
       setTimeout(() => {
         navigate('/', { replace: true })
       }, 1200)
@@ -52,7 +52,7 @@ export function ResetPasswordPage() {
     return (
       <section className="page">
         <article className="card">
-          <h2>Preparando recuperacion</h2>
+          <h2>Preparando recuperación</h2>
           <p>Estamos verificando tu link para cambiar la contraseña.</p>
         </article>
       </section>
@@ -65,7 +65,7 @@ export function ResetPasswordPage() {
         <article className="card">
           <div className="section-title">
             <h1>Restablecer contraseña</h1>
-            <p>Este link ya no es valido o expiro. Pide uno nuevo para continuar.</p>
+            <p>Este link ya no es válido o expiro. Pide uno nuevo para continuar.</p>
           </div>
 
           <div className="entry-form__actions">
@@ -83,7 +83,7 @@ export function ResetPasswordPage() {
       <article className="card">
         <div className="section-title">
           <h1>Nueva contraseña</h1>
-          <p>Elige una contraseña nueva para tu cuenta.</p>
+          <p>Elegí una contraseña nueva para tu cuenta.</p>
         </div>
 
         <form className="auth-form" onSubmit={handleSubmit}>

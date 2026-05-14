@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client'
+﻿import { supabase } from '@/integrations/supabase/client'
 import type { CategoryRecord, EntryCategoryRecord } from '@/types/categories'
 
 type CategoryRow = {
@@ -29,7 +29,7 @@ type EntryUserCategoryRow = {
 function getClient() {
   if (!supabase) {
     throw new Error(
-      'Supabase no esta configurado. Revisa VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.',
+      'Supabase no está configurado. Revisa VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.',
     )
   }
 
@@ -272,7 +272,7 @@ export async function createUserCategory(input: {
   const name = normalizeCategoryName(input.name)
 
   if (!name) {
-    throw new Error('Ingresa un nombre para el tag.')
+    throw new Error('Ingresá un nombre para el tag.')
   }
 
   try {
@@ -417,7 +417,7 @@ export async function deleteUserCategory(input: {
     }
 
     if (usage && usage.length > 0) {
-      throw new Error('No se puede eliminar el tag porque se esta usando en entradas.')
+      throw new Error('No se puede eliminar el tag porque se está usando en entradas.')
     }
 
     const { error: deleteAssignError } = await client
@@ -446,7 +446,7 @@ export async function deleteUserCategory(input: {
     }
 
     if (legacyUsage && legacyUsage.length > 0) {
-      throw new Error('No se puede eliminar el tag porque se esta usando en entradas.')
+      throw new Error('No se puede eliminar el tag porque se está usando en entradas.')
     }
 
     const { error: legacyError } = await client

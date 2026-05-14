@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 
 import type { CategoryRecord } from '@/types/categories'
 
@@ -43,13 +43,13 @@ export function ManageUserCategoriesModal({
       >
         <div className="section-title">
           <h2 id="manage-user-categories-title">Gestionar tags</h2>
-          <p>Estos tags organizan tu biblioteca. Refind tambien puede crearlos automaticamente al generar una ficha.</p>
+          <p>Estos tags organizan tu biblioteca. Refind también puede crearlos automáticamente al generar una ficha.</p>
         </div>
 
         {errorMessage ? <p className="feedback feedback--error">{errorMessage}</p> : null}
 
         {categories.length === 0 ? (
-          <p className="muted">Todavia no tienes tags guardados.</p>
+          <p className="muted">Todavía no tienes tags guardados.</p>
         ) : (
           <div className="category-manage-list">
             {categories.map((category) => (

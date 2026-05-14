@@ -1,4 +1,4 @@
-import {
+﻿import {
   normalizeAiAnalysis,
   normalizeAnalyzeEntryRequest,
   type AnalyzeEntryRequest,
@@ -60,7 +60,7 @@ export async function analyzeEntry(input: AnalyzeEntryRequest) {
       typeof data.error === 'string'
         ? data.error
         : response.status >= 500
-          ? 'No pudimos analizar esta entrada desde el servidor. Si usaste capturas en mobile, prueba con una imagen mas simple o mas recortada.'
+          ? 'No pudimos analizar esta entrada desde el servidor. Si usaste capturas en mobile, prueba con una imagen más simple o más recortada.'
           : 'No pudimos analizar esta entrada con IA.'
 
     throw new Error(requestId ? `${message} (ref: ${requestId})` : message)

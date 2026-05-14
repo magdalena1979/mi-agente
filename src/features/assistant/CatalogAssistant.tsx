@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { askCatalogAssistant } from '@/features/assistant/catalog-assistant-api'
 import { listEntries } from '@/features/entries/entries-api'
@@ -12,8 +12,82 @@ type ChatMessage = {
 
 const suggestedPrompts = [
   'Que peli drama puedo ver?',
-  'Que libros cargue ultimamente?',
+  'Que libros cargue últimamente?',
   'Mostrame recetas pendientes',
+  'Cuántas capturas puedo agregar?',
+]
+const outOfScopeAnswer =
+  'Solo puedo ayudarte con cosas de Refind: tu biblioteca, entries, tags, capturas, links, PDFs, búsquedas y cómo funciona la app.'
+const appScopeKeywords = [
+  'app',
+  'refind',
+  'biblioteca',
+  'catálogo',
+  'entry',
+  'entries',
+  'entrada',
+  'entradas',
+  'captura',
+  'capturas',
+  'imagen',
+  'imagenes',
+  'imágenes',
+  'link',
+  'links',
+  'pdf',
+  'ocr',
+  'ia',
+  'analizar',
+  'analisis',
+  'análisis',
+  'limite',
+  'límite',
+  'maximo',
+  'máximo',
+  'cuantas',
+  'cuántas',
+  'cuanto',
+  'cuánto',
+  'funciona',
+  'usar',
+  'uso',
+  'puedo',
+  'agregar',
+  'descargar',
+  'descarga',
+  'editar',
+  'edicion',
+  'edición',
+  'archivo',
+  'guardar',
+  'guardado',
+  'cargue',
+  'cargué',
+  'subí',
+  'subí',
+  'pendiente',
+  'pendientes',
+  'tag',
+  'tags',
+  'buscar',
+  'mostrame',
+  'receta',
+  'recetas',
+  'peli',
+  'película',
+  'película',
+  'serie',
+  'libro',
+  'lugar',
+  'viaje',
+  'planta',
+  'huerta',
+  'evento',
+  'género',
+  'género',
+  'director',
+  'autor',
+  'plataforma',
 ]
 const searchStopWords = new Set([
   'algo',
@@ -25,10 +99,10 @@ const searchStopWords = new Set([
   'dime',
   'sobre',
   'tengo',
-  'tenes',
+  'tenés',
   'tenés',
   'tienes',
-  'ultimamente',
+  'últimamente',
   'últimamente',
   'puedo',
   'para',
@@ -75,6 +149,73 @@ function getEntrySearchText(entry: EntryRecord) {
   )
 }
 
+function isCatalogScopedMessage(message: string, entries: EntryRecord[]) {
+  const normalizedMessage = normalizeText(message)
+
+  if (appScopeKeywords.some((keyword) => normalizedMessage.includes(normalizeText(keyword)))) {
+    return true
+  }
+
+  return entries.some((entry) => {
+    const entryTitle = normalizeText(entry.title)
+
+    if (entryTitle.length > 2 && normalizedMessage.includes(entryTitle)) {
+      return true
+    }
+
+    const entryText = getEntrySearchText(entry)
+
+    return normalizedMessage
+      .split(/\s+/)
+      .some((token) => token.length > 3 && entryText.includes(token))
+  })
+}
+
+function answerPlatformUsageQuestion(message: string) {
+  const normalizedMessage = normalizeText(message)
+  const mentionsCaptures =
+    normalizedMessage.includes('captura') ||
+    normalizedMessage.includes('imagen') ||
+    normalizedMessage.includes('foto')
+
+  if (
+    mentionsCaptures &&
+    /(cuantas|cuantos|limite|maximo|agregar|subir|permit)/.test(normalizedMessage)
+  ) {
+    return 'Podés agregar hasta 2 capturas por entry. Si una entry ya tiene 2 capturas, Refind oculta la opción de agregar más para mantener el análisis liviano y no ocupar espacio innecesario.'
+  }
+
+  if (normalizedMessage.includes('pdf')) {
+    return 'Podés subir un PDF al crear una entry. Refind lo convierte en imágenes temporales para OCR/IA y no guarda el PDF original, así evita usar demasiado espacio.'
+  }
+
+  if (
+    normalizedMessage.includes('volver a analizar') ||
+    normalizedMessage.includes('reanali') ||
+    (normalizedMessage.includes('ia') && normalizedMessage.includes('analiz'))
+  ) {
+    return 'La opción “Volver a analizar con IA” aparece dentro del modo edición. Cada entry tiene un límite de 2 análisis con IA para controlar uso y costo.'
+  }
+
+  if (normalizedMessage.includes('descargar') || normalizedMessage.includes('bajar')) {
+    return 'En el detalle de una entry podés usar el icono de descarga para bajar una ficha en PDF con la información principal.'
+  }
+
+  if (normalizedMessage.includes('editar') || normalizedMessage.includes('edicion')) {
+    return 'Para editar una entry, tocá el icono de lápiz. En edición vas a ver una barra superior con Cancelar y Guardar, y los campos organizados en secciones.'
+  }
+
+  if (normalizedMessage.includes('tag') || normalizedMessage.includes('categoria')) {
+    return 'Los tags sirven para filtrar y ordenar tu biblioteca. Refind puede sugerir tags con IA, y también podés gestionarlos desde la biblioteca o al editar una entry.'
+  }
+
+  if (normalizedMessage.includes('como funciona') || normalizedMessage.includes('funciona')) {
+    return 'Refind guarda capturas, PDFs o links como entries. Primero carga el contenido, después usa OCR/IA para armar una ficha editable y finalmente la guarda en tu biblioteca para buscarla por título, tags, tipo o fuente.'
+  }
+
+  return null
+}
+
 function formatEntryList(entries: EntryRecord[]) {
   return entries
     .slice(0, 5)
@@ -109,12 +250,12 @@ function answerFromLocalCatalog(message: string, entries: EntryRecord[]) {
       )
 
     if (books.length > 0) {
-      return `Estos son los libros que cargaste mas recientemente:\n${formatEntryList(books)}`
+      return `Estos son los libros que cargaste más recientemente:\n${formatEntryList(books)}`
     }
   }
 
   const wantsMovie =
-    /\b(peli|pelicula|cine|ver)\b/.test(normalizedMessage) ||
+    /\b(peli|película|cine|ver)\b/.test(normalizedMessage) ||
     normalizedMessage.includes('cannes')
   const candidateEntries = activeEntries
     .filter((entry) =>
@@ -155,7 +296,7 @@ export function CatalogAssistant() {
     {
       id: 'welcome',
       role: 'assistant',
-      text: 'Preguntame por tu biblioteca: pelis por genero, libros recientes, recetas, lugares o pendientes.',
+      text: 'Preguntame por tu biblioteca: pelis por género, libros recientes, recetas, lugares o pendientes.',
     },
   ])
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
@@ -223,6 +364,34 @@ export function CatalogAssistant() {
     setMessages((currentMessages) => [...currentMessages, userMessage])
     setInputValue('')
     setIsSending(true)
+
+    const platformAnswer = answerPlatformUsageQuestion(normalizedMessage)
+
+    if (platformAnswer) {
+      setMessages((currentMessages) => [
+        ...currentMessages,
+        {
+          id: createMessageId(),
+          role: 'assistant',
+          text: platformAnswer,
+        },
+      ])
+      setIsSending(false)
+      return
+    }
+
+    if (!isCatalogScopedMessage(normalizedMessage, availableEntries)) {
+      setMessages((currentMessages) => [
+        ...currentMessages,
+        {
+          id: createMessageId(),
+          role: 'assistant',
+          text: outOfScopeAnswer,
+        },
+      ])
+      setIsSending(false)
+      return
+    }
 
     try {
       const answer = await askCatalogAssistant({

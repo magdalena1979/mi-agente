@@ -23,7 +23,7 @@ const BackgroundLines: React.FC = () => {
             y1="700"
             x2="1000"
             y2="550"
-            stroke="rgba(255,255,255,0.10)"
+            stroke="var(--bg-line-strong)"
             strokeWidth={1.2}
           />
 
@@ -33,7 +33,7 @@ const BackgroundLines: React.FC = () => {
             y1="1000"
             x2="1000"
             y2="200"
-            stroke="rgba(255,255,255,0.08)"
+            stroke="var(--bg-line)"
             strokeWidth={1.2}
           />
 
@@ -43,8 +43,8 @@ const BackgroundLines: React.FC = () => {
             y1="1000"
             x2="800"
             y2="100"
-            stroke="#E02680"
-            strokeOpacity={0.5}
+            stroke="var(--bg-line-accent)"
+            strokeOpacity="var(--bg-line-accent-opacity)"
             strokeWidth={2}
           />
         </svg>
@@ -70,13 +70,13 @@ const BackgroundLines: React.FC = () => {
             y1="150"
             x2="700"
             y2="0"
-            stroke="rgba(255,255,255,0.05)"
+            stroke="var(--bg-line)"
             strokeWidth={1}
           />
 
           <path
             d="M0 400 Q300 250 700 300"
-            stroke="rgba(255,255,255,0.035)"
+            stroke="var(--bg-line-soft)"
             strokeWidth={1}
             fill="none"
           />

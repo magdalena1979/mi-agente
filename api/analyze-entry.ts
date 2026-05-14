@@ -1,9 +1,9 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node'
+﻿import type { VercelRequest, VercelResponse } from '@vercel/node'
 
 import {
   analyzeEntryPayload,
   AnalyzeEntryUpstreamError,
-  AnalyzeEntryValidationError,
+  AnalyzeEntryVálidationError,
   getAnalyzePayloadDebugSummary,
 } from './_lib/analyze-entry.js'
 
@@ -53,7 +53,7 @@ function getFilesSummary(req: VercelRequest) {
 }
 
 function getErrorStatus(error: unknown) {
-  if (error instanceof AnalyzeEntryValidationError) {
+  if (error instanceof AnalyzeEntryVálidationError) {
     return 400
   }
 

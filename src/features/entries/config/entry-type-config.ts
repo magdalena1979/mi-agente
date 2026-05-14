@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   EntryFieldKey,
   EntryMetadataFields,
   EntryType,
@@ -22,7 +22,7 @@ export const entryTypeOptions: EntryTypeOption[] = [
   {
     type: 'book',
     label: 'Libro',
-    description: 'Titulo, autor, nota y tags.',
+    description: 'Título, autor, nota y tags.',
     fields: ['author', 'note'],
   },
   {
@@ -39,14 +39,14 @@ export const entryTypeOptions: EntryTypeOption[] = [
   },
   {
     type: 'movie',
-    label: 'Pelicula',
-    description: 'Plataforma, director, reparto, genero, ano, duracion, nota y tags.',
+    label: 'Película',
+    description: 'Plataforma, director, reparto, género, año, duracion, nota y tags.',
     fields: ['platform', 'director', 'cast', 'genre', 'year', 'duration', 'note'],
   },
   {
     type: 'series',
     label: 'Serie',
-    description: 'Plataforma, reparto, genero, nota y tags.',
+    description: 'Plataforma, reparto, género, nota y tags.',
     fields: ['platform', 'cast', 'genre', 'note'],
   },
   {
@@ -88,7 +88,7 @@ export const entryTypeOptions: EntryTypeOption[] = [
   {
     type: 'other',
     label: 'Otro',
-    description: 'Titulo libre, nota y tags.',
+    description: 'Título libre, nota y tags.',
     fields: ['note'],
   },
 ]
@@ -139,19 +139,19 @@ export const entryFieldDefinitions: Record<EntryFieldKey, EntryFieldDefinition> 
   },
   genre: {
     key: 'genre',
-    label: 'Genero',
+    label: 'Género',
     placeholder: 'Ej. drama, ciencia ficcion',
     input: 'text',
   },
   year: {
     key: 'year',
-    label: 'Ano',
+    label: 'Año',
     placeholder: 'Ej. 1999',
     input: 'text',
   },
   duration: {
     key: 'duration',
-    label: 'Duracion',
+    label: 'Duración',
     placeholder: 'Ej. 120 min',
     input: 'text',
   },
@@ -170,7 +170,7 @@ export const entryFieldDefinitions: Record<EntryFieldKey, EntryFieldDefinition> 
   topic: {
     key: 'topic',
     label: 'Tema',
-    placeholder: 'Ej. cine coreano, recetas faciles, huerta urbana, plantas de interior',
+    placeholder: 'Ej. cine coreaño, recetas fáciles, huerta urbana, plantas de interior',
     input: 'text',
   },
   note: {

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 
 import {
   createInvitation,
@@ -18,7 +18,7 @@ type ShareListModalProps = {
 function getErrorMessage(error: unknown) {
   return error instanceof Error
     ? error.message
-    : 'No pudimos enviar la invitacion.'
+    : 'No pudimos enviar la invitación.'
 }
 
 export function ShareListModal({
@@ -49,7 +49,7 @@ export function ShareListModal({
       await navigator.clipboard.writeText(inviteLink)
       setSuccessMessage('Link copiado. Ya puedes compartirlo manualmente.')
     } catch {
-      setErrorMessage('No pudimos copiar el link automaticamente.')
+      setErrorMessage('No pudimos copiar el link automáticamente.')
     }
   }
 
@@ -59,7 +59,7 @@ export function ShareListModal({
     const normalizedEmail = email.trim().toLowerCase()
 
     if (!normalizedEmail) {
-      setErrorMessage('Ingresa un email para continuar.')
+      setErrorMessage('Ingresá un email para continuar.')
       return
     }
 
@@ -89,10 +89,10 @@ export function ShareListModal({
           inviteLink: nextInviteLink,
         })
 
-        setSuccessMessage('Invitacion enviada correctamente.')
+        setSuccessMessage('Invitación enviada correctamente.')
       } catch {
         setSuccessMessage(
-          'La invitacion se guardo, pero el email no se envio automaticamente. Comparte el link manualmente.',
+          'La invitación se guardó, pero el email no se envió automáticamente. Compartí el link manualmente.',
         )
       }
       setEmail('')
@@ -132,7 +132,7 @@ export function ShareListModal({
           ) : null}
           {inviteLink ? (
             <label className="form-field">
-              <span>Link de invitacion</span>
+              <span>Link de invitación</span>
               <input type="text" readOnly value={inviteLink} />
             </label>
           ) : null}

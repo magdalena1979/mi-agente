@@ -4,6 +4,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import BackgroundLines from '@/components/BackgroundLines'
 import { CatalogAssistant } from '@/features/assistant/CatalogAssistant'
 import { useAuth } from '@/features/auth/auth-context'
+import { ThemeSelector } from '@/features/theme/ThemeSelector'
 import { env } from '@/lib/env'
 
 function getAvatarLabel(email?: string): string {
@@ -16,6 +17,7 @@ export function AppShell() {
   const { user, isLoading, signOut } = useAuth()
   const isHomeRoute = location.pathname === '/'
   const isAuthRoute = location.pathname === '/auth'
+  const isNewEntryRoute = location.pathname === '/entries/new'
   const isLibraryRoute = isHomeRoute && Boolean(user)
   const isLandingRoute = isHomeRoute && !user && !isLoading
   const [isScrolled, setIsScrolled] = useState(false)
@@ -27,9 +29,9 @@ export function AppShell() {
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false)
 
   const headerStatusText = isLoading
-    ? 'Verificando sesion...'
+    ? 'Verificando sesión...'
     : user?.email
-      ? `Sesion iniciada - ${user.email}`
+      ? `Sesión iniciada - ${user.email}`
       : env.isSupabaseConfigured
         ? null
         : 'Configura Supabase para continuar'
@@ -139,6 +141,7 @@ export function AppShell() {
     'app-shell',
     user ? 'app-shell--authenticated' : '',
     isAuthRoute ? 'app-shell--auth-route' : '',
+    isNewEntryRoute ? 'app-shell--new-entry-route' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -150,7 +153,6 @@ export function AppShell() {
         position: 'relative',
         minHeight: '100vh',
         overflow: 'hidden',
-        background: '#0D0D0D',
       }}
     >
       <BackgroundLines />
@@ -180,7 +182,7 @@ export function AppShell() {
                     : 'app-header__actions'
                 }
               >
-                {isLibraryRoute && isMobileViewport && isHeaderSearchOpen ? (
+                {isLibraryRoute && !isMobileViewport && isHeaderSearchOpen ? (
                   <label className="search-field app-header__search-field">
                     <span className="sr-only">Buscar en tu archivo</span>
                     <input
@@ -195,7 +197,7 @@ export function AppShell() {
                   </label>
                 ) : null}
 
-                {isLibraryRoute ? (
+                {isLibraryRoute && !isMobileViewport ? (
                   <button
                     type="button"
                     className="button--ghost icon-button app-header__search"
@@ -234,18 +236,21 @@ export function AppShell() {
 
                     {isAccountMenuOpen ? (
                       <div className="app-header__account-dropdown" role="menu">
+                        <ThemeSelector />
                         <button
                           type="button"
                           className="app-header__account-action"
                           role="menuitem"
                           onClick={() => void handleSignOut()}
                         >
-                          Cerrar sesion
+                          Cerrar sesión
                         </button>
                       </div>
                     ) : null}
                   </div>
                 ) : null}
+
+                {!user ? <ThemeSelector /> : null}
 
                 {!user && !isLandingRoute && headerStatusText ? (
                   <p className="header-meta__text header-meta__text--stacked">
@@ -261,7 +266,7 @@ export function AppShell() {
           <Outlet />
         </main>
 
-        {user ? <CatalogAssistant /> : null}
+        {user && !isNewEntryRoute ? <CatalogAssistant /> : null}
       </div>
     </div>
   )

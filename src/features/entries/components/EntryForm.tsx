@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 
@@ -38,6 +38,20 @@ type EntryFormProps = {
   onDeleteCategory?: (category: CategoryRecord) => Promise<void> | void
   deletingCategoryId?: string | null
   highlightEditableFields?: boolean
+  collapseSecondarySections?: boolean
+}
+
+function formatEntrySourceOption(sourceType: EntryFormValues['sourceType']) {
+  switch (sourceType) {
+    case 'link':
+      return 'Link'
+    case 'pdf':
+      return 'PDF'
+    case 'manual':
+      return 'Manual'
+    default:
+      return 'Captura'
+  }
 }
 
 export function EntryForm({
@@ -62,6 +76,7 @@ export function EntryForm({
   onDeleteCategory,
   deletingCategoryId,
   highlightEditableFields = false,
+  collapseSecondarySections = false,
 }: EntryFormProps) {
   const form = useForm<EntryFormValues>({
     resolver: zodResolver(entryFormSchema),
@@ -266,15 +281,15 @@ export function EntryForm({
 
       <section className="form-section form-section--basic">
         <div className="form-section__header">
-          <h3 className="form-section__title">Basico</h3>
+          <h3 className="form-section__title">Básico</h3>
           <p className="form-section__description">
-            Solo lo esencial para que la ficha quede clara y facil de encontrar.
+            Solo lo esencial para que la ficha quede clara y fácil de encontrar.
           </p>
         </div>
 
         <div className="field-grid">
           <label className="form-field">
-            <span>Titulo</span>
+            <span>Título</span>
             <input
               type="text"
               placeholder="Ej. El viaje de Chihiro, brownie de banana, feria de libros"
@@ -291,7 +306,7 @@ export function EntryForm({
           <span>Resumen</span>
           <textarea
             rows={4}
-            placeholder="Descripcion corta o contexto util para encontrar esta entry despues."
+            placeholder="Descripción corta o contexto útil para encontrar esta entry después."
             disabled={isFormReadOnly}
             {...form.register('summary')}
           />
@@ -310,7 +325,7 @@ export function EntryForm({
         <div className="form-field">
           <span>Tags guardados</span>
           <p className="form-helper">
-            Se usan como filtros de tu biblioteca. Refind puede crearlos automaticamente desde los tags detectados.
+            Se usan como filtros de tu biblioteca. Refind puede crearlos automáticamente desde los tags detectados.
           </p>
 
           <div className="category-filter-grid category-filter-grid--form">
@@ -387,11 +402,14 @@ export function EntryForm({
       </section>
 
       {detailFields.length > 0 ? (
-        <details className="form-section form-section--panel" open>
+        <details
+          className="form-section form-section--panel"
+          {...(collapseSecondarySections ? {} : { open: true })}
+        >
           <summary className="form-section__summary">
             <span>
               <strong>Detalles</strong>
-              <small>Plataforma, genero, reparto y notas utiles.</small>
+              <small>Plataforma, género, reparto y notas útiles.</small>
             </span>
           </summary>
 
@@ -435,7 +453,7 @@ export function EntryForm({
             <select {...form.register('sourceType')} disabled={isFormReadOnly}>
               {entrySourceOptions.map((sourceType) => (
                 <option key={sourceType} value={sourceType}>
-                  {sourceType}
+                  {formatEntrySourceOption(sourceType)}
                 </option>
               ))}
             </select>

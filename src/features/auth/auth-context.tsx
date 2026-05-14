@@ -1,4 +1,4 @@
-/* eslint-disable react-refresh/only-export-components */
+﻿/* eslint-disable react-refresh/only-export-components */
 import {
   createContext,
   useContext,
@@ -34,7 +34,7 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 function getMissingConfigError() {
   return new Error(
-    'Supabase no esta configurado. Revisa VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.',
+    'Supabase no está configurado. Revisa VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.',
   )
 }
 
@@ -115,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async signUp({ email, password }) {
         if (!supabase) throw getMissingConfigError()
 
-        // Validar que el email no esté bloqueado
+        // Válidar que el email no esté bloqueado
         if (isBlockedEmail(email)) {
           throw new Error(
             'Ni te calientes beb, ya tengo pila de personas que me quieren y me valoran y quieren probar mi app..  y se alegren conmigo!'

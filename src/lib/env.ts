@@ -1,5 +1,5 @@
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim() ?? ''
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() ?? ''
+﻿const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim() ?? ''
+const supabaseAñonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() ?? ''
 
 function hasValidSupabaseUrlFormat(value: string) {
   try {
@@ -15,7 +15,7 @@ function hasValidSupabaseUrlFormat(value: string) {
   }
 }
 
-function hasValidSupabaseAnonKeyFormat(value: string) {
+function hasValidSupabaseAñonKeyFormat(value: string) {
   return (
     (value.startsWith('eyJ') && value.length > 100) ||
     (value.startsWith('sb_publishable_') && value.length > 20)
@@ -24,10 +24,10 @@ function hasValidSupabaseAnonKeyFormat(value: string) {
 
 export const env = {
   supabaseUrl,
-  supabaseAnonKey,
+  supabaseAñonKey,
   hasValidSupabaseUrl: hasValidSupabaseUrlFormat(supabaseUrl),
-  hasValidSupabaseAnonKey: hasValidSupabaseAnonKeyFormat(supabaseAnonKey),
+  hasValidSupabaseAñonKey: hasValidSupabaseAñonKeyFormat(supabaseAñonKey),
   isSupabaseConfigured:
     hasValidSupabaseUrlFormat(supabaseUrl) &&
-    hasValidSupabaseAnonKeyFormat(supabaseAnonKey),
+    hasValidSupabaseAñonKeyFormat(supabaseAñonKey),
 }

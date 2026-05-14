@@ -1,4 +1,4 @@
-import type { EntryRecord } from '@/types/entries'
+﻿import type { EntryRecord } from '@/types/entries'
 
 type CatalogAssistantResponse = {
   answer?: string
@@ -45,7 +45,7 @@ export async function askCatalogAssistant(input: {
   }
 
   if (!data?.answer) {
-    throw new Error('La IA no devolvio una respuesta para el chat.')
+    throw new Error('La IA no devolvió una respuesta para el chat.')
   }
 
   return data.answer

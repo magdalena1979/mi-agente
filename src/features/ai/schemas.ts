@@ -72,7 +72,7 @@ export const analyzeEntryRequestSchema = z
     combinedExtractedText: z.string(),
     images: z.array(aiAnalysisImageSchema).default([]),
     ocrTextByImage: z.array(ocrTextByImageSchema).default([]),
-    sourceType: z.enum(['screenshot', 'manual', 'link']).optional(),
+    sourceType: z.enum(['screenshot', 'manual', 'link', 'pdf']).optional(),
     sourceName: z.string().default(''),
     sourceUrl: z.string().default(''),
   })
