@@ -37,7 +37,13 @@ export type EntryStatus = 'draft' | 'reviewed' | 'archived'
 export type EntrySourceType = 'screenshot' | 'manual' | 'link' | 'pdf'
 export type PendingUploadOcrStatus = 'idle' | 'processing' | 'success' | 'error'
 
-export type EntryMetadataSystemKey = 'aiAnalysisCount' | 'aiRefreshCount'
+export type EntryMetadataSystemKey =
+  | 'aiAnalysisCount'
+  | 'aiRefreshCount'
+  | 'documentPath'
+  | 'documentName'
+  | 'documentSizeBytes'
+  | 'documentMimeType'
 
 export type EntryMetadataFields = Partial<
   Record<EntryFieldKey | EntryMetadataSystemKey, string>

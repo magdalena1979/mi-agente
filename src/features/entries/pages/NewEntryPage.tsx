@@ -13,6 +13,7 @@ import {
 import { ManageUserCategoriesModal } from '@/features/categories/components/ManageUserCategoriesModal'
 import { EntryForm } from '@/features/entries/components/EntryForm'
 import { createEntry, updateEntry } from '@/features/entries/entries-api'
+import { uploadEntryDocument } from '@/features/entries/entry-documents-api'
 import { replaceEntryImages } from '@/features/entries/entry-images-api'
 import {
   createEmptyEntryFormValues,
@@ -47,7 +48,9 @@ type OcrImageResult = {
 const MAX_ENTRY_CAPTURES = 2
 const MAX_INITIAL_AI_ANALYSES = 1
 type NewEntryStep = 1 | 2 | 3
+type EntryInputMode = 'capture' | 'link' | 'file'
 type PendingDocument = {
+  file: File
   name: string
   size: number
   totalPages: number
@@ -347,6 +350,10 @@ export function NewEntryPage() {
   const [isPastingImage, setIsPastingImage] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeStep, setActiveStep] = useState<NewEntryStep>(1)
+  const [selectedInputMode, setSelectedInputMode] =
+    useState<EntryInputMode | null>(null)
+  const [isRelatedLinkOpen, setIsRelatedLinkOpen] = useState(false)
+  const [isSupportCaptureOpen, setIsSupportCaptureOpen] = useState(false)
   const [availableCategories, setAvailableCategories] = useState<CategoryRecord[]>([])
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([])
   const [isManageCategoriesModalOpen, setIsManageCategoriesModalOpen] = useState(false)
@@ -378,8 +385,6 @@ export function NewEntryPage() {
   const hasPreparedLink =
     formDefaults.sourceType === 'link' && formDefaults.sourceUrl.trim().length > 0
   const isInstagramPreparedLink = hasPreparedLink && isInstagramLink(formDefaults.sourceUrl)
-  const isUsingImages = pendingImages.length > 0
-  const isUsingPdf = pendingDocument !== null
   const isUsingLink = normalizedLinkInput.length > 0 || hasPreparedLink
   const hasSourceReady = pendingImages.length > 0 || hasPreparedLink || hasValidLinkInput
   const hasAnalysisResult = analysisRunCount > 0
@@ -491,7 +496,10 @@ export function NewEntryPage() {
     )
   }
 
-  function handleUseLink(linkOverride?: string) {
+  function handleUseLink(
+    linkOverride?: string,
+    options: { stayOnStep?: boolean } = {},
+  ) {
     const normalizedLink = (linkOverride ?? linkInput).trim()
 
     if (!normalizedLink) {
@@ -508,8 +516,16 @@ export function NewEntryPage() {
       return
     }
 
+    const shouldKeepSupportImages =
+      selectedInputMode === 'link' &&
+      formDefaults.sourceUrl.trim() === normalizedLink &&
+      pendingImages.length > 0
+
+    setSelectedInputMode('link')
     setLinkInput(normalizedLink)
-    setPendingImages([])
+    if (!shouldKeepSupportImages) {
+      setPendingImages([])
+    }
     setPendingDocument(null)
     setInstagramPastedText('')
     setIsInstagramTextMode(false)
@@ -531,8 +547,52 @@ export function NewEntryPage() {
       }),
     )
 
-    requestAnimationFrame(() => {
-      setActiveStep(2)
+    if (!options.stayOnStep) {
+      requestAnimationFrame(() => {
+        setActiveStep(2)
+      })
+    }
+  }
+
+  function clearPendingMedia() {
+    setPendingImages((currentImages) => {
+      for (const image of currentImages) {
+        URL.revokeObjectURL(image.previewUrl)
+      }
+
+      return []
+    })
+    setPendingDocument(null)
+  }
+
+  function handleSelectInputMode(mode: EntryInputMode) {
+    if (selectedInputMode === mode) {
+      setActiveStep(1)
+      return
+    }
+
+    setSelectedInputMode(mode)
+    setActiveStep(1)
+    setAnalysisErrorMessage(null)
+    setPasteSuccessMessage(null)
+    setLinkSuccessMessage(null)
+    setSaveErrorMessage(null)
+    setSaveSuccessMessage(null)
+
+    clearPendingMedia()
+    setInstagramPastedText('')
+    setIsInstagramTextMode(false)
+    setIsRelatedLinkOpen(false)
+    setIsSupportCaptureOpen(false)
+
+    if (mode === 'link') {
+      resetAnalysisState({ sourceType: 'link' })
+      return
+    }
+
+    setLinkInput('')
+    resetAnalysisState({
+      sourceType: mode === 'file' ? 'pdf' : 'screenshot',
     })
   }
 
@@ -593,9 +653,24 @@ export function NewEntryPage() {
       setPendingDocument(null)
     }
 
-    setLinkInput('')
-    setLinkSuccessMessage(null)
-    if (isInstagramPreparedLink) {
+    const isPreparedLinkSupportCapture =
+      selectedInputMode === 'link' && formDefaults.sourceType === 'link'
+
+    if (options.sourceType === 'pdf') {
+      setSelectedInputMode('file')
+    } else if (!isPreparedLinkSupportCapture) {
+      setSelectedInputMode('capture')
+    }
+
+    const shouldPreservePreparedLink =
+      isPreparedLinkSupportCapture
+
+    if (!shouldPreservePreparedLink) {
+      setLinkInput('')
+      setLinkSuccessMessage(null)
+    }
+
+    if (shouldPreservePreparedLink) {
       setAnalysisConfidence(null)
       setAnalysisRunCount(0)
       setAnalysisErrorMessage(null)
@@ -615,17 +690,6 @@ export function NewEntryPage() {
     setLinkInput(value)
     setAnalysisErrorMessage(null)
     setLinkSuccessMessage(null)
-
-    const normalizedValue = value.trim()
-
-    if (
-      normalizedValue &&
-      isValidUrl(normalizedValue) &&
-      !isUsingImages &&
-      formDefaults.sourceUrl.trim() !== normalizedValue
-    ) {
-      handleUseLink(normalizedValue)
-    }
   }
 
   async function handlePasteImageFromClipboard() {
@@ -690,6 +754,7 @@ export function NewEntryPage() {
   }
 
   async function handlePdfSelected(file: File) {
+    setSelectedInputMode('file')
     setIsPreparingPdf(true)
     setAnalysisErrorMessage(null)
     setPasteSuccessMessage(null)
@@ -709,6 +774,7 @@ export function NewEntryPage() {
       }
 
       setPendingDocument({
+        file,
         name: file.name,
         size: file.size,
         totalPages: renderedPdf.totalPages,
@@ -722,8 +788,8 @@ export function NewEntryPage() {
       })
       setPasteSuccessMessage(
         renderedPdf.totalPages > renderedPdf.renderedPages
-          ? `PDF listo. Vamos a analizar las primeras ${renderedPdf.renderedPages} páginas para cuidar datos y espacio.`
-          : 'PDF listo. Ahora podés generar la ficha con IA/OCR.',
+          ? `PDF listo. Vamos a analizar las primeras ${renderedPdf.renderedPages} páginas y guardar el archivo original para descargarlo después.`
+          : 'PDF listo. Vamos a guardarlo como documento y generar la ficha con IA/OCR.',
       )
     } catch (error) {
       setPendingDocument(null)
@@ -835,14 +901,22 @@ export function NewEntryPage() {
     setAnalysisConfidence(null)
 
     const snapshot = [...pendingImages]
+    const relatedSourceUrl =
+      formDefaults.sourceUrl ||
+      (formDefaults.sourceType !== 'link' && hasValidLinkInput
+        ? normalizedLinkInput
+        : '')
+    const relatedSourceName =
+      formDefaults.sourceName ||
+      (relatedSourceUrl ? inferSourceNameFromLink(relatedSourceUrl) : '')
     const sourceContext = {
       sourceType: hasPreparedLink
         ? 'link'
         : pendingDocument
           ? 'pdf'
           : 'screenshot',
-      sourceName: formDefaults.sourceName,
-      sourceUrl: formDefaults.sourceUrl,
+      sourceName: relatedSourceName,
+      sourceUrl: relatedSourceUrl,
     } as const
     const manualSupportText = normalizedInstagramPastedText
     const imagesSelectedForAi = snapshot
@@ -1078,18 +1152,39 @@ export function NewEntryPage() {
         setDraftEntryId(entry.id)
       }
 
+      let savedEntry = entry
+
       if (pendingImages.length > 0) {
         await replaceEntryImages(entry.id, user.id, pendingImages)
       }
 
+      if (pendingDocument) {
+        const storedDocument = await uploadEntryDocument(
+          entry.id,
+          user.id,
+          pendingDocument.file,
+        )
+
+        savedEntry = await updateEntry(entry.id, {
+          ...entryPayload,
+          metadata: {
+            ...entryPayload.metadata,
+            documentPath: storedDocument.path,
+            documentName: storedDocument.name,
+            documentSizeBytes: String(storedDocument.sizeBytes),
+            documentMimeType: storedDocument.mimeType,
+          },
+        })
+      }
+
       await replaceEntryCategories({
-        entryId: entry.id,
+        entryId: savedEntry.id,
         userId: user.id,
         categoryIds: categoryIdsForSave,
       })
 
       setSaveSuccessMessage('Entry guardada correctamente.')
-      navigate(`/entries/${entry.id}`, { replace: true })
+      navigate(`/entries/${savedEntry.id}`, { replace: true })
     } catch (error) {
       setSaveErrorMessage(
         getErrorMessage(error, 'No pudimos guardar la entry y su material.'),
@@ -1116,10 +1211,22 @@ export function NewEntryPage() {
       : null
   const canSubmitEntry = formDefaults.sourceType === 'link' || pendingImages.length > 0
   const canAnalyzeWithAi = hasSourceReady && analysisRunCount < MAX_INITIAL_AI_ANALYSES
+  const activeInputMode =
+    selectedInputMode ??
+    (pendingDocument
+      ? 'file'
+      : hasPreparedLink
+        ? 'link'
+        : pendingImages.length > 0
+          ? 'capture'
+          : null)
   const captureProgressLabel = pendingDocument
     ? `${pendingDocument.renderedPages} de ${pendingDocument.totalPages} paginas PDF listas`
     : `${pendingImages.length} de ${MAX_ENTRY_CAPTURES} capturas cargadas`
-  const isUploadDisabled = isPreparingPdf || pendingImages.length >= MAX_ENTRY_CAPTURES || isUsingLink
+  const isUploadDisabled =
+    isPreparingPdf ||
+    pendingImages.length >= MAX_ENTRY_CAPTURES ||
+    (isUsingLink && activeInputMode !== 'capture')
   const uploadCtaLabel =
     isPreparingPdf
       ? 'Preparando PDF'
@@ -1131,6 +1238,31 @@ export function NewEntryPage() {
         ? 'Agregar segunda captura'
         : 'Capturas completas'
   const primaryPreviewUrl = pendingImages[0]?.previewUrl ?? null
+  const inputModeCards: Array<{
+    mode: EntryInputMode
+    title: string
+    description: string
+    icon: 'image' | 'link' | 'file'
+  }> = [
+    {
+      mode: 'capture',
+      title: 'Guardar una captura',
+      description: 'Subí una captura para analizarla con IA',
+      icon: 'image',
+    },
+    {
+      mode: 'link',
+      title: 'Guardar un link',
+      description: 'Pegá un link de Instagram, YouTube, TikTok o un artículo',
+      icon: 'link',
+    },
+    {
+      mode: 'file',
+      title: 'Guardar un archivo',
+      description: 'Subí un PDF o documento',
+      icon: 'file',
+    },
+  ]
   const stepItems: Array<{
     step: NewEntryStep
     title: string
@@ -1162,6 +1294,64 @@ export function NewEntryPage() {
       currentIds.includes(categoryId)
         ? currentIds.filter((currentId) => currentId !== categoryId)
         : [...currentIds, categoryId],
+    )
+  }
+
+  function openFilePickerForMode(mode: Extract<EntryInputMode, 'capture' | 'file'>) {
+    if (selectedInputMode !== mode) {
+      handleSelectInputMode(mode)
+    }
+
+    requestAnimationFrame(() => {
+      inputRef.current?.click()
+    })
+  }
+
+  function handleAddSupportCapture() {
+    if (!hasPreparedLink) {
+      if (!hasValidLinkInput) {
+        setAnalysisErrorMessage('Pegá un link válido antes de sumar una captura de apoyo.')
+        return
+      }
+
+      handleUseLink(normalizedLinkInput, { stayOnStep: true })
+    }
+
+    setSelectedInputMode('link')
+    setIsSupportCaptureOpen(true)
+    requestAnimationFrame(() => {
+      inputRef.current?.click()
+    })
+  }
+
+  function renderInputModeIcon(icon: 'image' | 'link' | 'file') {
+    if (icon === 'link') {
+      return (
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M9.5 14.5 14.5 9.5" />
+          <path d="M10.5 7.5 12 6a4 4 0 0 1 5.7 5.6l-1.5 1.5" />
+          <path d="M13.5 16.5 12 18a4 4 0 0 1-5.7-5.6l1.5-1.5" />
+        </svg>
+      )
+    }
+
+    if (icon === 'file') {
+      return (
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M7 3.5h6l4 4V20H7z" />
+          <path d="M13 3.5v4h4" />
+          <path d="M9.2 14h5.6" />
+          <path d="M9.2 17h3.4" />
+        </svg>
+      )
+    }
+
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M4 6.5h16v11H4z" />
+        <path d="m7 15 3.2-3.2 2.1 2.1 1.4-1.4L17 15" />
+        <path d="M16.5 9.2h.1" />
+      </svg>
     )
   }
 
@@ -1312,7 +1502,7 @@ export function NewEntryPage() {
           <button
             type="button"
             className="capture-preview-card capture-preview-card--add"
-            disabled={isUsingLink}
+            disabled={isUsingLink && activeInputMode !== 'capture'}
             onClick={() => {
               inputRef.current?.click()
             }}
@@ -1535,170 +1725,289 @@ export function NewEntryPage() {
 
       {activeStep === 1 ? (
       <article className="card new-entry-step-card new-entry-step-card--upload">
-        <div className="new-entry-step-card__header">
-          <div className="section-title">
-            <span className="eyebrow">Paso 1</span>
-            <h2>Guardá algo para encontrarlo después</h2>
-            <p>Capturas, PDFs o links.</p>
-          </div>
-
-          <div className="new-entry-upload-meter" aria-label={captureProgressLabel}>
-            <strong>{captureProgressLabel}</strong>
-            <span>
-              {Array.from({ length: MAX_ENTRY_CAPTURES }).map((_, index) => (
-                <i
-                  key={index}
-                  className={
-                    index < pendingImages.length
-                      ? 'new-entry-upload-meter__dot new-entry-upload-meter__dot--filled'
-                      : 'new-entry-upload-meter__dot'
-                  }
-                />
-              ))}
-            </span>
-          </div>
+        <div className="new-entry-choice-hero">
+          <span className="eyebrow">Paso 1</span>
+          <h1>¿Qué querés guardar?</h1>
+          <p>Elegí una fuente y Refind te guía con el flujo correcto.</p>
         </div>
 
-        <div className="new-entry-upload-stage">
-          <div
-            role="button"
-            tabIndex={isUploadDisabled ? -1 : 0}
-            aria-disabled={isUploadDisabled}
-            className={
-              pendingImages.length > 0
-                ? 'new-entry-dropzone new-entry-dropzone--has-preview'
-                : 'new-entry-dropzone'
-            }
-            onClick={() => {
-              if (isUploadDisabled) {
-                return
-              }
+        <div className="new-entry-source-grid" aria-label="Tipo de entrada">
+          {inputModeCards.map((option) => {
+            const isSelected = activeInputMode === option.mode
 
-              inputRef.current?.click()
-            }}
-            onKeyDown={(event) => {
-              if (isUploadDisabled) {
-                return
-              }
+            return (
+              <button
+                key={option.mode}
+                type="button"
+                className={
+                  isSelected
+                    ? 'new-entry-source-card new-entry-source-card--selected'
+                    : 'new-entry-source-card'
+                }
+                aria-pressed={isSelected}
+                onClick={() => {
+                  handleSelectInputMode(option.mode)
+                }}
+              >
+                <span className="new-entry-source-card__icon">
+                  {renderInputModeIcon(option.icon)}
+                </span>
+                <span className="new-entry-source-card__copy">
+                  <strong>{option.title}</strong>
+                  <small>{option.description}</small>
+                </span>
+              </button>
+            )
+          })}
+        </div>
 
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault()
-                inputRef.current?.click()
-              }
-            }}
-          >
-            {primaryPreviewUrl ? (
-              <img
-                src={primaryPreviewUrl}
-                alt={pendingDocument ? 'Preview de la primera pagina PDF' : 'Preview de la primera captura'}
-                className="new-entry-dropzone__image"
-              />
-            ) : null}
-            {pendingImages[0] ? (
-              <span
+        {activeInputMode === 'capture' ? (
+          <div className="new-entry-mode-panel new-entry-mode-panel--capture">
+            <div className="new-entry-mode-panel__header">
+              <div>
+                <h2>Subí una captura</h2>
+                <p>Ideal para posts, recetas, mensajes o cualquier pantalla que quieras encontrar después.</p>
+              </div>
+              <span>{captureProgressLabel}</span>
+            </div>
+
+            <div className="new-entry-upload-stage">
+              <div
                 role="button"
-                tabIndex={0}
-                className="new-entry-dropzone__remove"
-                aria-label={pendingDocument ? 'Quitar PDF' : 'Quitar primera captura'}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  if (pendingDocument) {
-                    handleClearPendingDocument()
+                tabIndex={isUploadDisabled ? -1 : 0}
+                aria-disabled={isUploadDisabled}
+                className={
+                  primaryPreviewUrl
+                    ? 'new-entry-dropzone new-entry-dropzone--has-preview'
+                    : 'new-entry-dropzone'
+                }
+                onClick={() => {
+                  if (!isUploadDisabled) {
+                    openFilePickerForMode('capture')
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (isUploadDisabled) {
                     return
                   }
 
-                  handleRemoveImage(pendingImages[0].id)
-                }}
-                onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault()
-                    event.stopPropagation()
-                    if (pendingDocument) {
-                      handleClearPendingDocument()
-                      return
-                    }
-
-                    handleRemoveImage(pendingImages[0].id)
+                    openFilePickerForMode('capture')
                   }
                 }}
               >
-                {pendingDocument ? 'Quitar PDF' : 'Quitar captura'}
-              </span>
-            ) : null}
-            <span className="new-entry-dropzone__overlay" />
-            <span className="new-entry-dropzone__content">
-              <span className="new-entry-dropzone__icon" aria-hidden="true" />
-              <strong>Guardá una captura, PDF o link</strong>
-              <small>
-                {pendingImages.length > 0
-                  ? pendingDocument
-                    ? 'El PDF ya está convertido en páginas temporales. Podes continuar.'
-                    : 'La captura ya está cargada. Podes sumar una más o continuar.'
-                  : 'Arrastra, selecciona o pegá una captura, o elegí un PDF.'}
-              </small>
-            </span>
-          </div>
+                {primaryPreviewUrl ? (
+                  <img
+                    src={primaryPreviewUrl}
+                    alt="Preview de la captura"
+                    className="new-entry-dropzone__image"
+                  />
+                ) : null}
+                {pendingImages[0] ? (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="new-entry-dropzone__remove"
+                    aria-label="Quitar captura"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      handleRemoveImage(pendingImages[0].id)
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        handleRemoveImage(pendingImages[0].id)
+                      }
+                    }}
+                  >
+                    Quitar captura
+                  </span>
+                ) : null}
+                <span className="new-entry-dropzone__overlay" />
+                <span className="new-entry-dropzone__content">
+                  <span className="new-entry-dropzone__icon" aria-hidden="true" />
+                  <strong>{pendingImages.length > 0 ? 'Captura cargada' : 'Tocá para subir una captura'}</strong>
+                  <small>
+                    {pendingImages.length > 0
+                      ? 'La IA va a leer el texto y generar una ficha editable.'
+                      : 'También podés arrastrar una imagen desde desktop.'}
+                  </small>
+                </span>
+              </div>
 
-          <div className="new-entry-toolbar">
+              <div className="new-entry-toolbar">
+                <button
+                  type="button"
+                  className="button"
+                  disabled={isUploadDisabled}
+                  onClick={() => {
+                    openFilePickerForMode('capture')
+                  }}
+                >
+                  {uploadCtaLabel}
+                </button>
+
+                <button
+                  type="button"
+                  className="button--ghost new-entry-desktop-only"
+                  disabled={isPastingImage || pendingImages.length >= MAX_ENTRY_CAPTURES}
+                  onClick={() => {
+                    void handlePasteImageFromClipboard()
+                  }}
+                >
+                  {isPastingImage ? 'Pegando...' : 'Pegar imagen'}
+                </button>
+              </div>
+            </div>
+
             <button
               type="button"
-              className="button"
-              disabled={isUploadDisabled}
+              className="new-entry-inline-toggle"
               onClick={() => {
-                inputRef.current?.click()
+                setIsRelatedLinkOpen((currentValue) => !currentValue)
               }}
             >
-              <span className="new-entry-toolbar__label-desktop">{uploadCtaLabel}</span>
-              <span className="new-entry-toolbar__label-mobile">{uploadCtaLabel}</span>
+              Agregar link relacionado
             </button>
 
-            <button
-              type="button"
-              className="button--ghost new-entry-desktop-only"
-              disabled={
-                isPastingImage ||
-                pendingImages.length >= MAX_ENTRY_CAPTURES ||
-                isUsingLink ||
-                isUsingPdf
+            {isRelatedLinkOpen ? (
+              <label className="new-entry-link-field">
+                <span>Link relacionado</span>
+                <input
+                  type="url"
+                  placeholder="Pegá el link original si lo tenés"
+                  value={linkInput}
+                  onChange={(event) => {
+                    handleLinkInputChange(event.target.value)
+                  }}
+                />
+              </label>
+            ) : null}
+          </div>
+        ) : null}
+
+        {activeInputMode === 'link' ? (
+          <div className="new-entry-mode-panel new-entry-mode-panel--link">
+            <div className="new-entry-mode-panel__header">
+              <div>
+                <h2>Pegá el link</h2>
+                <p>Refind intenta leer la fuente y arma una ficha lista para revisar.</p>
+              </div>
+            </div>
+
+            <label className="new-entry-link-field new-entry-link-field--hero">
+              <span>Link</span>
+              <input
+                type="url"
+                placeholder="Pegá un link de Instagram, YouTube, TikTok o cualquier artículo"
+                value={linkInput}
+                onChange={(event) => {
+                  handleLinkInputChange(event.target.value)
+                }}
+              />
+            </label>
+
+            <div className="new-entry-source-badges" aria-label="Fuentes compatibles">
+              <span>Instagram</span>
+              <span>YouTube</span>
+              <span>TikTok</span>
+              <span>Artículos</span>
+              <span>Recetas</span>
+            </div>
+
+            {isSupportCaptureOpen || pendingImages.length > 0 ? (
+              <div className="new-entry-support-capture">
+                <p>La IA usará la captura para entender mejor el contenido.</p>
+                {pendingImages.length > 0 ? renderCapturePreviewGrid({ compact: true }) : null}
+              </div>
+            ) : null}
+
+            <div className="new-entry-mode-actions">
+              <button
+                type="button"
+                className="button"
+                disabled={!hasValidLinkInput}
+                onClick={() => {
+                  handleUseLink()
+                }}
+              >
+                Continuar con este link
+              </button>
+              <button
+                type="button"
+                className="button--ghost"
+                disabled={!hasValidLinkInput || pendingImages.length >= MAX_ENTRY_CAPTURES}
+                onClick={() => {
+                  handleAddSupportCapture()
+                }}
+              >
+                Agregar captura de apoyo
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {activeInputMode === 'file' ? (
+          <div className="new-entry-mode-panel new-entry-mode-panel--file">
+            <div className="new-entry-mode-panel__header">
+              <div>
+                <h2>Subí un archivo</h2>
+                <p>Para PDFs, recetas largas, informes o documentos que quieras poder descargar después.</p>
+              </div>
+            </div>
+
+            <div
+              role="button"
+              tabIndex={isPreparingPdf ? -1 : 0}
+              aria-disabled={isPreparingPdf}
+              className={
+                pendingDocument
+                  ? 'new-entry-document-dropzone new-entry-document-dropzone--ready'
+                  : 'new-entry-document-dropzone'
               }
               onClick={() => {
-                void handlePasteImageFromClipboard()
+                if (!isPreparingPdf) {
+                  openFilePickerForMode('file')
+                }
+              }}
+              onKeyDown={(event) => {
+                if (isPreparingPdf) {
+                  return
+                }
+
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  openFilePickerForMode('file')
+                }
               }}
             >
-              {isPastingImage ? 'Pegando...' : 'Pegar imagen'}
-            </button>
+              <span className="new-entry-document-dropzone__icon">PDF</span>
+              <strong>{pendingDocument ? pendingDocument.name : 'Tocá para subir un PDF'}</strong>
+              <small>
+                {pendingDocument
+                  ? `${pendingDocument.renderedPages} de ${pendingDocument.totalPages} páginas listas para IA/OCR.`
+                  : 'La IA leerá el documento y Refind guardará el archivo original.'}
+              </small>
+            </div>
+
+            {pendingDocument ? (
+              <button
+                type="button"
+                className="new-entry-inline-toggle"
+                onClick={() => {
+                  handleClearPendingDocument()
+                  setSelectedInputMode('file')
+                }}
+              >
+                Quitar archivo
+              </button>
+            ) : null}
+
+            {pendingDocument ? renderCapturePreviewGrid({ compact: true }) : null}
           </div>
-        </div>
-
-        <p className="muted new-entry-desktop-only">
-          Usa Pegar imagen o Ctrl+V después de copiar una captura. Los PDF se convierten en páginas temporales; el archivo original no se guarda.
-        </p>
-
-        <div className="new-entry-link-row">
-          <div className="section-title">
-            <h2>O pegá un link</h2>
-          </div>
-
-          <label className="form-field new-entry-link-input">
-            <input
-              type="url"
-              placeholder="Pegá un link de Instagram, YouTube, TikTok, receta o artículo..."
-              value={linkInput}
-              disabled={isUsingImages}
-              onChange={(event) => {
-                handleLinkInputChange(event.target.value)
-              }}
-            />
-          </label>
-
-          <div className="new-entry-source-badges" aria-label="Fuentes compatibles">
-            <span>JPG</span>
-            <span>PNG</span>
-            <span>PDF</span>
-            <span>Instagram</span>
-            <span>YouTube</span>
-          </div>
-        </div>
+        ) : null}
 
         {linkSuccessMessage ? (
           <p className="feedback feedback--success">{linkSuccessMessage}</p>
@@ -1707,7 +2016,6 @@ export function NewEntryPage() {
           <p className="feedback feedback--success">{pasteSuccessMessage}</p>
         ) : null}
 
-        {renderCapturePreviewGrid()}
         <div className="new-entry-step-card__footer">
           <button
             type="button"
@@ -1868,7 +2176,7 @@ export function NewEntryPage() {
                   <h3>{pendingDocument ? 'Paginas PDF' : 'Capturas cargadas'}</h3>
                   <p>
                     {pendingDocument
-                      ? `${pendingDocument.name} convertido para IA/OCR sin guardar el PDF original.`
+                      ? `${pendingDocument.name} se guardará como PDF original y estas páginas se usarán para IA/OCR.`
                       : 'Material visual usado por IA/OCR.'}
                   </p>
                 </div>

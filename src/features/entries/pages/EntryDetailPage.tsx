@@ -12,6 +12,7 @@ import {
   getEntry,
   updateEntry,
 } from '@/features/entries/entries-api'
+import { getEntryDocumentUrl } from '@/features/entries/entry-documents-api'
 import {
   listEntryImages,
   replaceEntryImages,
@@ -207,6 +208,30 @@ function downloadBlob(fileName: string, blob: Blob) {
   URL.revokeObjectURL(objectUrl)
 }
 
+async function downloadFromUrl(url: string, fileName: string) {
+  const response = await fetch(url)
+
+  if (!response.ok) {
+    throw new Error('No pudimos descargar el PDF original.')
+  }
+
+  const blob = await response.blob()
+  downloadBlob(fileName, blob)
+}
+
+function getEntryDocumentInfo(entry: EntryRecord | null) {
+  if (!entry?.metadata.documentPath) {
+    return null
+  }
+
+  return {
+    path: entry.metadata.documentPath,
+    name: entry.metadata.documentName || `${sanitizeFileName(entry.title) || 'refind-document'}.pdf`,
+    sizeBytes: Number.parseInt(entry.metadata.documentSizeBytes ?? '0', 10),
+    mimeType: entry.metadata.documentMimeType ?? 'application/pdf',
+  }
+}
+
 function getHeroHighlights(entry: EntryRecord) {
   const highlights: Array<{ label: string; value: string }> = []
 
@@ -281,6 +306,7 @@ function getHeroSupportFacts(entry: EntryRecord) {
   }
 
   pushIfPresent('Link original', entry.sourceUrl, entry.sourceUrl ?? undefined)
+  pushIfPresent('PDF original', entry.metadata.documentName)
   pushIfPresent('Nota', entry.metadata.note)
 
   if (entry.type === 'recipe') {
@@ -343,6 +369,7 @@ export function EntryDetailPage() {
   const uploadInputRef = useRef<HTMLInputElement | null>(null)
   const [entry, setEntry] = useState<EntryRecord | null>(null)
   const [entryImages, setEntryImages] = useState<EntryImageRecord[]>([])
+  const [entryDocumentUrl, setEntryDocumentUrl] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -360,6 +387,7 @@ export function EntryDetailPage() {
 
       setIsLoading(true)
       setErrorMessage(null)
+      setEntryDocumentUrl(null)
 
       try {
         const [nextEntry, nextEntryImages] = await Promise.all([
@@ -374,6 +402,14 @@ export function EntryDetailPage() {
 
           setEntry(nextEntry)
           setEntryImages(nextEntryImages)
+        }
+
+        const nextDocumentUrl = await getEntryDocumentUrl(
+          nextEntry?.metadata.documentPath,
+        )
+
+        if (!ignore) {
+          setEntryDocumentUrl(nextDocumentUrl)
         }
       } catch (error) {
         if (!ignore) {
@@ -410,20 +446,35 @@ export function EntryDetailPage() {
     () => (entry ? getHeroSupportFacts(entry) : []),
     [entry],
   )
+  const entryDocumentInfo = useMemo(() => getEntryDocumentInfo(entry), [entry])
+  const hasStoredDocument = Boolean(entryDocumentInfo && entryDocumentUrl)
 
   const totalAiAnalysisCount = entry ? getTotalAiAnalysisCount(entry) : 0
   const canEditEntry = Boolean(entry)
   const canReanalyze = Boolean(entry && totalAiAnalysisCount < 2)
   const canAddCaptures = canReanalyze && entryImages.length < MAX_ENTRY_CAPTURES
 
-  function handleDownloadPdf() {
+  async function handleDownloadPdf() {
     if (!entry) {
       return
     }
 
-    const pdf = buildEntryPdf(entry, [...detailFacts, ...heroSupportFacts])
-    const fileName = `${sanitizeFileName(entry.title) || 'refind-entry'}.pdf`
-    downloadBlob(fileName, pdf)
+    try {
+      if (entryDocumentInfo && entryDocumentUrl) {
+        await downloadFromUrl(entryDocumentUrl, entryDocumentInfo.name)
+        return
+      }
+
+      const pdf = buildEntryPdf(entry, [...detailFacts, ...heroSupportFacts])
+      const fileName = `${sanitizeFileName(entry.title) || 'refind-entry'}.pdf`
+      downloadBlob(fileName, pdf)
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : 'No pudimos preparar la descarga.',
+      )
+    }
   }
 
   async function createAnalysisImageFromSavedCapture(image: EntryImageRecord) {
@@ -824,10 +875,18 @@ export function EntryDetailPage() {
               <button
                 type="button"
                 className="button--ghost button--icon-only detail-hero__download-button"
-                aria-label="Descargar ficha en PDF"
-                title="Descargar ficha en PDF"
+                aria-label={
+                  hasStoredDocument
+                    ? 'Descargar PDF original'
+                    : 'Descargar ficha en PDF'
+                }
+                title={
+                  hasStoredDocument
+                    ? 'Descargar PDF original'
+                    : 'Descargar ficha en PDF'
+                }
                 onClick={() => {
-                  handleDownloadPdf()
+                  void handleDownloadPdf()
                 }}
               >
                 <svg aria-hidden="true" viewBox="0 0 24 24" className="action-icon">

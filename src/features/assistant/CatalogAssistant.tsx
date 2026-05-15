@@ -186,7 +186,7 @@ function answerPlatformUsageQuestion(message: string) {
   }
 
   if (normalizedMessage.includes('pdf')) {
-    return 'Podés subir un PDF al crear una entry. Refind lo convierte en imágenes temporales para OCR/IA y no guarda el PDF original, así evita usar demasiado espacio.'
+    return 'Podés subir un PDF al crear una entry. Refind guarda el PDF original en Storage, usa páginas livianas para OCR/IA y después podés buscar la entry por su contenido o descargar el PDF desde el detalle.'
   }
 
   if (
@@ -198,7 +198,7 @@ function answerPlatformUsageQuestion(message: string) {
   }
 
   if (normalizedMessage.includes('descargar') || normalizedMessage.includes('bajar')) {
-    return 'En el detalle de una entry podés usar el icono de descarga para bajar una ficha en PDF con la información principal.'
+    return 'En el detalle de una entry podés usar el icono de descarga. Si la entry nació de un PDF, baja el PDF original; en otros casos baja una ficha PDF con la información principal.'
   }
 
   if (normalizedMessage.includes('editar') || normalizedMessage.includes('edicion')) {

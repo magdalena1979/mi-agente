@@ -38,6 +38,7 @@ function getEntrySearchText(entry: EntryRecord) {
   return [
     entry.title,
     entry.summary,
+    entry.extractedText,
     entry.type,
     entry.sourceName ?? '',
     entry.sourceUrl ?? '',
@@ -52,6 +53,7 @@ function getEntrySearchText(entry: EntryRecord) {
     entry.metadata.platform ?? '',
     entry.metadata.topic ?? '',
     entry.metadata.note ?? '',
+    entry.metadata.documentName ?? '',
   ]
     .join(' ')
     .toLowerCase()
@@ -703,12 +705,6 @@ export function EntriesHomePage() {
     } finally {
       setArchivingId(null)
     }
-  }
-
-  function handleShare(entry: EntryRecord) {
-    setErrorMessage(null)
-    setActionMessage(`Compartir "${entry.title}" estara disponible pronto.`)
-    setOpenSwipeEntryId(null)
   }
 
   function handleSwipeStart(entryId: string, clientX: number) {
@@ -1380,16 +1376,6 @@ export function EntriesHomePage() {
                           }}
                         >
                           {deletingId === entry.id ? 'Borrando...' : 'Eliminar'}
-                        </button>
-                        <button
-                          type="button"
-                          className="library-row-swipe-action library-row-swipe-action--share"
-                          disabled={isSwipeBusy}
-                          onClick={() => {
-                            handleShare(entry)
-                          }}
-                        >
-                          Compartir
                         </button>
                       </div>
 

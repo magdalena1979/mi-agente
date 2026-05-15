@@ -4,7 +4,6 @@ import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '@/features/auth/auth-context'
 import { listEntriesForList } from '@/features/entries/entries-api'
 import { entryTypeOptions } from '@/features/entries/config/entry-type-config'
-import { ShareListModal } from '@/features/lists/components/ShareListModal'
 import { getList } from '@/features/lists/lists-api'
 import type { EntryRecord } from '@/types/entries'
 import type { ListRecord } from '@/types/lists'
@@ -61,21 +60,6 @@ export function ListDetailPage() {
   const [entries, setEntries] = useState<EntryRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [isShareOpen, setIsShareOpen] = useState(false)
-
-  async function loadCurrentList() {
-    if (!listId) {
-      return
-    }
-
-    const [nextList, nextEntries] = await Promise.all([
-      getList(listId),
-      listEntriesForList(listId),
-    ])
-
-    setList(nextList)
-    setEntries(nextEntries)
-  }
 
   useEffect(() => {
     let ignore = false
@@ -170,7 +154,7 @@ export function ListDetailPage() {
           <h1>{list.name}</h1>
           <p>
             {entries.length} entradas guardadas en esta lista. Usa el botón de
-            abajo para agregár nuevas capturas o compartir la lista.
+            abajo para agregár nuevas capturas.
           </p>
         </div>
 
@@ -178,16 +162,6 @@ export function ListDetailPage() {
           <Link className="button" to="/entries/new">
             Agregar entrada
           </Link>
-          <button
-            type="button"
-            className="button--ghost"
-            disabled={!isOwner}
-            onClick={() => {
-              setIsShareOpen(true)
-            }}
-          >
-            Share with
-          </button>
         </div>
       </article>
 
@@ -274,19 +248,6 @@ export function ListDetailPage() {
         </aside>
       </div>
 
-      {user ? (
-        <ShareListModal
-          isOpen={isShareOpen}
-          list={list}
-          currentUserId={user.id}
-          onClose={() => {
-            setIsShareOpen(false)
-          }}
-          onSuccess={async () => {
-            await loadCurrentList()
-          }}
-        />
-      ) : null}
     </section>
   )
 }

@@ -64,7 +64,14 @@ function coerceEntryMetadata(value: unknown): EntryMetadataFields {
   const record = value as Record<string, unknown>
   const metadata: EntryMetadataFields = {}
 
-  for (const systemKey of ['aiAnalysisCount', 'aiRefreshCount'] as const) {
+  for (const systemKey of [
+    'aiAnalysisCount',
+    'aiRefreshCount',
+    'documentPath',
+    'documentName',
+    'documentSizeBytes',
+    'documentMimeType',
+  ] as const) {
     const systemValue = record[systemKey]
 
     if (typeof systemValue === 'string') {

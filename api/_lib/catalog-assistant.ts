@@ -176,7 +176,7 @@ function answerPlatformUsageQuestion(message: string) {
   }
 
   if (normalizedMessage.includes('pdf')) {
-    return 'Podés subir un PDF al crear una entry. Refind lo convierte en imágenes temporales para OCR/IA y no guarda el PDF original, así evita usar demasiado espacio.'
+    return 'Podés subir un PDF al crear una entry. Refind guarda el PDF original en Storage, usa páginas livianas para OCR/IA y después podés buscar la entry por su contenido o descargar el PDF desde el detalle.'
   }
 
   if (
@@ -188,7 +188,7 @@ function answerPlatformUsageQuestion(message: string) {
   }
 
   if (normalizedMessage.includes('descargar') || normalizedMessage.includes('bajar')) {
-    return 'En el detalle de una entry podés usar el icono de descarga para bajar una ficha en PDF con la información principal.'
+    return 'En el detalle de una entry podés usar el icono de descarga. Si la entry nació de un PDF, baja el PDF original; en otros casos baja una ficha PDF con la información principal.'
   }
 
   if (normalizedMessage.includes('editar') || normalizedMessage.includes('edicion')) {
@@ -251,7 +251,7 @@ function buildPrompt(message: string, entries: CatalogAssistantEntry[]) {
     'No fuerces tono simpático: prioriza precisión, sobriedad y claridad.',
     'Usa el catálogo del usuario como fuente principal. Si recomendás algo, prioriza items ya guardados.',
     'También podés responder preguntas sobre cómo funciona Refind, sus límites y flujos de uso.',
-    'Datos de producto: cada entry admite hasta 2 capturas; los PDF se convierten en imágenes temporales para OCR/IA y no se guarda el PDF original; Volver a analizar con IA está en edición y cada entry tiene hasta 2 análisis; el detalle permite descargar una ficha PDF; las entries se pueden editar con el icono de lápiz; los tags ayudan a filtrar la biblioteca.',
+    'Datos de producto: cada entry admite hasta 2 capturas; los PDF se guardan como archivo original en Storage, se procesan con páginas livianas para OCR/IA y se pueden descargar desde el detalle; Volver a analizar con IA está en edición y cada entry tiene hasta 2 análisis; las entries se pueden editar con el icono de lápiz; los tags ayudan a filtrar la biblioteca.',
     'Límite estricto: solo podés responder sobre Refind, cómo usar la app y la biblioteca provista. Si el mensaje pide conocimiento general, clima, noticias, matemática, programación, salud, legal, finanzas, tareas escolares o cualquier cosa no relacionada con la app o las entradas guardadas, responde brevemente que solo podés ayudar con Refind.',
     'Si la persona pide algo como "que peli drama puedo ver", busca películas o series con género, tags, resumen o nota compatible, y da 2 a 5 opciones con una razón corta.',
     'Si pide "que libros cargue últimamente", ordena por updatedAt y menciona los libros más recientes.',
